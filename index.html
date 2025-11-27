@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>餐廳隨機推薦器</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map { height: 400px; margin-top: 10px; }
+    body { font-family: Arial; padding: 20px; }
+    input, button { padding: 8px; font-size: 14px; margin: 2px; }
+    .info { margin-bottom: 10px; font-size: 14px; color: #555; }
+  </style>
+</head>
+<body>
+  <h2>餐廳隨機推薦器</h2>
+  <div class="info" id="apiInfo"></div>
+  <input type="text" id="address" placeholder="輸入地址">
+  <button onclick="findRestaurants()">搜尋餐廳</button>
+  <button id="randomBtn" onclick="pickRandom()" disabled>重新抽選</button>
+  <div id="result"></div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // ======= LocationIQ API 設定 =======
+    const API_KEY = "pk.9052647f63ab5ea241dee09e510957f7";
+    const MONTHLY_LIMIT = 10000; // 免費額度
+    let apiCount = 0;
+    let currentMonth = new Date().getMonth(); // 0~11
+
+    // 讀取 localStorage 記錄
+    if(localStorage.getItem("liApiMonth")) {
+      const savedMonth = parseInt(localStorage.getItem("liApiMonth"));
+      if(savedMonth !== currentMonth) {
+        // 新月份重置
+        apiCount = 0;
+        localStorage.setItem("liApiMonth", currentMonth);
+        localStorage.setItem("liApiCount", apiCount);
+      } else {
+        apiCount = parseInt(localStorage.getItem("liApiCount") || 0);
+      }
+    } else {
+      localStorage.setItem("liApiMonth", currentMonth);
+      localStorage.setItem("liApiCount", apiCount);
+    }
+
+    document.getElementById("apiInfo").innerHTML = 
+      `注意：此工具使用 <strong>LocationIQ 免費 API</strong>，每月免費額度 ${MONTHLY_LIMIT} 次。<br>本月已使用 ${apiCount} 次，剩餘 ${MONTHLY_LIMIT - apiCount} 次。`;
+
+    let map;
+    let markers = [];
+    let restaurants = [];
+
+    async function findRestaurants() {
+      if(apiCount >= MONTHLY_LIMIT) return alert("本月 LocationIQ API 已達免費額度，請等待下個月重置。");
+
+      const address = document.getElementById("address").value;
+      if(!address) return alert("請輸入地址");
+
+      // 清空上次標記
+      markers.forEach(m => map?.removeLayer(m));
+      markers = [];
+      restaurants = [];
+      document.getElementById("result").innerHTML = '';
+
+      // ===== 呼叫 LocationIQ =====
+      try {
+        const geoRes = await fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(address)}&format=json`);
+        const geoData = await geoRes.json();
+        if(!geoData.length) return alert("找不到地址");
+        const { lat, lon } = geoData[0];
+
+        // 更新 API 次數
+        apiCount++;
+        localStorage.setItem("liApiCount", apiCount);
+        document.getElementById("apiInfo").innerHTML = 
+          `注意：此工具使用 <strong>LocationIQ 免費 API</strong>，每月免費額度 ${MONTHLY_LIMIT} 次。<br>本月已使用 ${apiCount} 次，剩餘 ${MONTHLY_LIMIT - apiCount} 次。`;
+
+        // ===== 初始化地圖 =====
+        if(!map){
+          map = L.map('map').setView([lat, lon], 15);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+          }).addTo(map);
+        } else {
+          map.setView([lat, lon], 15);
+        }
+
+        // 標記使用者位置
+        const userMarker = L.marker([lat, lon]).addTo(map).bindPopup("你的位置").openPopup();
+        markers.push(userMarker);
+
+        // 畫騎車 10 分鐘範圍 (約 2km)
+        const circle = L.circle([lat, lon], { radius: 2000, color: 'blue', fillOpacity: 0.1 }).addTo(map);
+        markers.push(circle);
+
+        // ===== 查詢附近餐廳 (Overpass API) =====
+        const query = `
+          [out:json];
+          node["amenity"="restaurant"](around:1000,${lat},${lon});
+          out;
+        `;
+        const overpassRes = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          body: query
+        });
+        const overpassData = await overpassRes.json();
+        restaurants = overpassData.elements;
+        if(!restaurants.length) return alert("附近沒找到餐廳");
+
+        document.getElementById("result").innerHTML = `<p>附近共有 ${restaurants.length} 間餐廳。</p>`;
+
+        // 啟用重新抽選按鈕
+        document.getElementById("randomBtn").disabled = false;
+
+        // 預設抽一次
+        pickRandom();
+      } catch(err) {
+        console.error(err);
+        alert("定位失敗，請稍後再試。");
+      }
+    }
+
+    function pickRandom() {
+      if(!restaurants.length) return;
+
+      // 移除上一次餐廳標記
+      markers.slice(1).forEach(m => map.removeLayer(m));
+      markers = markers.slice(0,1); // 保留使用者位置與範圍圈
+
+      // 隨機選一間餐廳
+      const restaurant = restaurants[Math.floor(Math.random() * restaurants.length)];
+
+      // 標記餐廳
+      const restMarker = L.marker([restaurant.lat, restaurant.lon]).addTo(map)
+        .bindPopup(`${restaurant.tags.name || "無名稱"}<br>${restaurant.tags.addr_street || ""} ${restaurant.tags.addr_housenumber || ""}`).openPopup();
+      markers.push(restMarker);
+
+      // 顯示選中的餐廳資訊
+      document.getElementById("result").innerHTML = `
+        <p>附近共有 ${restaurants.length} 間餐廳。</p>
+        <h3>隨機推薦餐廳</h3>
+        <h4>${restaurant.tags.name || "無名稱"}</h4>
+        <p>地址: ${restaurant.tags.addr_street || ""} ${restaurant.tags.addr_housenumber || ""}</p>
+        <a href="https://www.openstreetmap.org/?mlat=${restaurant.lat}&mlon=${restaurant.lon}#map=18/${restaurant.lat}/${restaurant.lon}" target="_blank">查看地圖</a>
+      `;
+    }
+  </script>
+</body>
+</html>
