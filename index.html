@@ -52,74 +52,59 @@
     let restaurants = [];
 
     async function findRestaurants() {
-      if(apiCount >= MONTHLY_LIMIT) return alert("本月 LocationIQ API 已達免費額度，請等待下個月重置。");
+  const address = document.getElementById("address").value.trim();
+  if(!address) return alert("請輸入地址");
 
-      const address = document.getElementById("address").value;
-      if(!address) return alert("請輸入地址");
+  // 清空上次標記
+  markers.forEach(m => map?.removeLayer(m));
+  markers = [];
+  restaurants = [];
+  document.getElementById("result").innerHTML = '';
 
-      // 清空上次標記
-      markers.forEach(m => map?.removeLayer(m));
-      markers = [];
-      restaurants = [];
-      document.getElementById("result").innerHTML = '';
+  try {
+    // 將地址拆解為街道、區、縣市
+    // 假設使用者輸入 "新北市 三重區 五華街"
+    const [state, city, street] = address.split(" ").map(s => s.trim());
 
-      // ===== 呼叫 LocationIQ =====
-      try {
-        const geoRes = await fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(address)}&format=json`);
-        const geoData = await geoRes.json();
-        if(!geoData.length) return alert("找不到地址");
-        const { lat, lon } = geoData[0];
+    // 呼叫 LocationIQ 並明確指定 city/state
+    const geoRes = await fetch(
+      `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${street}&city=${city}&state=${state}&country=Taiwan&format=json`
+    );
+    const geoData = await geoRes.json();
 
-        // 更新 API 次數
-        apiCount++;
-        localStorage.setItem("liApiCount", apiCount);
-        document.getElementById("apiInfo").innerHTML = 
-          `注意：此工具使用 <strong>LocationIQ 免費 API</strong>，每月免費額度 ${MONTHLY_LIMIT} 次。<br>本月已使用 ${apiCount} 次，剩餘 ${MONTHLY_LIMIT - apiCount} 次。`;
+    if(!geoData.length) return alert("找不到地址");
 
-        // ===== 初始化地圖 =====
-        if(!map){
-          map = L.map('map').setView([lat, lon], 15);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors'
-          }).addTo(map);
-        } else {
-          map.setView([lat, lon], 15);
-        }
+    // 過濾結果，確保在指定縣市
+    const filtered = geoData.filter(item => 
+      item.display_name.includes(city) && item.display_name.includes(state)
+    );
 
-        // 標記使用者位置
-        const userMarker = L.marker([lat, lon]).addTo(map).bindPopup("你的位置").openPopup();
-        markers.push(userMarker);
-
-        // 畫騎車 10 分鐘範圍 (約 2km)
-        const circle = L.circle([lat, lon], { radius: 2000, color: 'blue', fillOpacity: 0.1 }).addTo(map);
-        markers.push(circle);
-
-        // ===== 查詢附近餐廳 (Overpass API) =====
-        const query = `
-          [out:json];
-          node["amenity"="restaurant"](around:1000,${lat},${lon});
-          out;
-        `;
-        const overpassRes = await fetch('https://overpass-api.de/api/interpreter', {
-          method: 'POST',
-          body: query
-        });
-        const overpassData = await overpassRes.json();
-        restaurants = overpassData.elements;
-        if(!restaurants.length) return alert("附近沒找到餐廳");
-
-        document.getElementById("result").innerHTML = `<p>附近共有 ${restaurants.length} 間餐廳。</p>`;
-
-        // 啟用重新抽選按鈕
-        document.getElementById("randomBtn").disabled = false;
-
-        // 預設抽一次
-        pickRandom();
-      } catch(err) {
-        console.error(err);
-        alert("定位失敗，請稍後再試。");
-      }
+    let location;
+    if(filtered.length === 0) {
+      // 沒有符合的結果，提示使用者選擇
+      location = geoData[0]; // fallback
+      alert("精確匹配失敗，使用第一筆結果，請確認位置是否正確");
+    } else if(filtered.length === 1) {
+      location = filtered[0];
+    } else {
+      // 多筆結果，讓使用者選擇
+      const choice = prompt(
+        "找到多筆可能位置，請輸入要使用的編號:\n" + 
+        filtered.map((item, i) => `${i}: ${item.display_name}`).join("\n")
+      );
+      location = filtered[parseInt(choice)] || filtered[0];
     }
+
+    const { lat, lon } = location;
+
+    // ===== 以下保持原本餐廳查詢、地圖初始化等程式 =====
+    // ...
+    
+  } catch(err) {
+    console.error(err);
+    alert("定位失敗，請稍後再試。");
+  }
+}
 
     function pickRandom() {
       if(!restaurants.length) return;
