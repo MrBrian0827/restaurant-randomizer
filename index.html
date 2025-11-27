@@ -8,6 +8,9 @@
 <style>
   body { font-family: Arial, sans-serif; margin: 20px; }
   #map { height: 400px; margin-top: 20px; }
+  #selectionContainer { margin-top: 10px; }
+  select { padding: 5px; font-size: 14px; }
+  button { padding: 5px 10px; margin-left: 5px; }
 </style>
 </head>
 <body>
@@ -17,6 +20,7 @@
 <input type="text" id="address" style="width:300px;" placeholder="新北市三重區五華街">
 <button onclick="findRestaurants()">搜尋附近餐廳</button>
 
+<div id="selectionContainer"></div>
 <div id="result"></div>
 <div id="map"></div>
 
@@ -26,6 +30,7 @@ const API_KEY = "pk.9052647f63ab5ea241dee09e510957f7"; // 你的 LocationIQ API 
 let map;
 let markers = [];
 let restaurants = [];
+let selectedLocation = null;
 
 // 初始化地圖
 function initMap(lat=25.0375, lon=121.5637) {
@@ -49,64 +54,41 @@ function pickRandomRestaurant() {
   `;
 }
 
-// 查詢餐廳
-async function findRestaurants() {
-  const address = document.getElementById("address").value.trim();
-  if(!address) return alert("請輸入地址");
+// 在地圖上標記餐廳
+function markRestaurants() {
+  restaurants.forEach(r => {
+    const m = L.marker([r.lat, r.lon]).addTo(map).bindPopup(r.name);
+    markers.push(m);
+  });
+}
 
-  // 清除舊標記
-  markers.forEach(m => map?.removeLayer(m));
-  markers = [];
-  restaurants = [];
-  document.getElementById("result").innerHTML = '';
+// 當使用者選擇地點後
+function handleLocationSelect() {
+  const select = document.getElementById("locationSelect");
+  const idx = parseInt(select.value);
+  selectedLocation = select.dataset.locations ? JSON.parse(select.dataset.locations)[idx] : null;
+  if(!selectedLocation) return;
 
+  const lat = parseFloat(selectedLocation.lat);
+  const lon = parseFloat(selectedLocation.lon);
+
+  // 初始化地圖
+  initMap(lat, lon);
+
+  // 標示搜尋範圍 1 公里
+  L.circle([lat, lon], { radius: 1000, color: 'blue', fillOpacity: 0.1 }).addTo(map);
+
+  // 查詢附近餐廳
+  fetchNearbyRestaurants(lat, lon);
+}
+
+// 查詢附近餐廳
+async function fetchNearbyRestaurants(lat, lon) {
   try {
-    // 拆解使用者輸入，假設格式 "縣市 區 街道"
-    let state, city, street;
-    const parts = address.match(/^(.{2,3}市)(.{2,3}區)(.+)$/);
-    if(parts){
-      [, state, city, street] = parts.map(s => s.trim());
-    } else {
-      alert("地址格式錯誤，請輸入縣市+區+街道");
-      return;
-    }
+    markers.forEach(m => map?.removeLayer(m));
+    restaurants = [];
+    document.getElementById("result").innerHTML = '';
 
-    // LocationIQ 搜尋街道
-    const geoRes = await fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${street}&country=Taiwan&format=json`);
-    const geoData = await geoRes.json();
-
-    if(!geoData.length) return alert("找不到地址");
-
-    // 使用 address 欄位比對縣市與區
-    const filtered = geoData.filter(item => {
-      const a = item.address || {};
-      return a.state?.includes(state) && a.city?.includes(city);
-    });
-
-    let location;
-    if(filtered.length === 0) {
-      location = geoData[0]; // fallback
-      alert("精確匹配失敗，使用第一筆結果，請確認位置是否正確");
-    } else if(filtered.length === 1) {
-      location = filtered[0];
-    } else {
-      const choice = prompt(
-        "找到多筆可能位置，請輸入要使用的編號:\n" + 
-        filtered.map((item, i) => `${i}: ${item.display_name}`).join("\n")
-      );
-      location = filtered[parseInt(choice)] || filtered[0];
-    }
-
-    const lat = parseFloat(location.lat);
-    const lon = parseFloat(location.lon);
-
-    // 初始化地圖
-    initMap(lat, lon);
-
-    // 標示搜尋範圍 1 公里
-    L.circle([lat, lon], { radius: 1000, color: 'blue', fillOpacity: 0.1 }).addTo(map);
-
-    // 查詢附近餐廳 (Overpass API)
     const query = `
       [out:json];
       node["amenity"="restaurant"](around:1000,${lat},${lon});
@@ -126,22 +108,76 @@ async function findRestaurants() {
       lon: e.lon
     }));
 
-    // 在地圖上標記餐廳
-    restaurants.forEach(r => {
-      const m = L.marker([r.lat, r.lon]).addTo(map).bindPopup(r.name);
-      markers.push(m);
-    });
-
-    // 先隨機抽一間
+    markRestaurants();
     pickRandomRestaurant();
-
   } catch(err) {
     console.error(err);
-    alert("定位或查詢餐廳失敗，請稍後再試。");
+    alert("查詢餐廳失敗，請稍後再試。");
   }
 }
 
-// 初始化地圖到台北中心
+// 查詢地址
+async function findRestaurants() {
+  const address = document.getElementById("address").value.trim();
+  if(!address) return alert("請輸入地址");
+
+  // 清除舊標記
+  markers.forEach(m => map?.removeLayer(m));
+  markers = [];
+  restaurants = [];
+  selectedLocation = null;
+  document.getElementById("result").innerHTML = '';
+  document.getElementById("selectionContainer").innerHTML = '';
+
+  try {
+    // 拆解使用者輸入，假設格式 "縣市區街道"
+    let state, city, street;
+    const parts = address.match(/^(.{2,3}市)(.{2,3}區)(.+)$/);
+    if(parts){
+      [, state, city, street] = parts.map(s => s.trim());
+    } else {
+      alert("地址格式錯誤，請輸入縣市+區+街道");
+      return;
+    }
+
+    // LocationIQ 搜尋街道
+    const geoRes = await fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${street}&country=Taiwan&format=json`);
+    const geoData = await geoRes.json();
+    if(!geoData.length) return alert("找不到地址");
+
+    // 使用 address 欄位比對縣市與區
+    const filtered = geoData.filter(item => {
+      const a = item.address || {};
+      return a.state?.includes(state) && a.city?.includes(city);
+    });
+
+    let locationsToSelect = filtered.length > 0 ? filtered : geoData;
+    if(filtered.length === 0) alert("精確匹配失敗，使用第一筆結果，請確認位置是否正確");
+
+    // 建立下拉選單
+    const container = document.getElementById("selectionContainer");
+    const select = document.createElement("select");
+    select.id = "locationSelect";
+    select.dataset.locations = JSON.stringify(locationsToSelect);
+    locationsToSelect.forEach((loc, i) => {
+      const option = document.createElement("option");
+      option.value = i;
+      option.text = loc.display_name;
+      select.appendChild(option);
+    });
+    const btn = document.createElement("button");
+    btn.textContent = "使用此位置";
+    btn.onclick = handleLocationSelect;
+    container.appendChild(select);
+    container.appendChild(btn);
+
+  } catch(err) {
+    console.error(err);
+    alert("定位失敗，請稍後再試。");
+  }
+}
+
+// 預設地圖到台北中心
 initMap();
 </script>
 </body>
