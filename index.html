@@ -6,39 +6,60 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  #map { height: 400px; margin-top: 20px; }
-  #selectionContainer { margin-top: 10px; }
-  select { padding: 5px; font-size: 14px; }
-  button { padding: 5px 10px; margin-left: 5px; }
+  body { font-family: Arial, sans-serif; margin: 10px; display: flex; flex-direction: column; align-items: center; }
+  input, button, select { font-size: 16px; padding: 8px; margin: 5px; width: 90%; max-width: 400px; }
+  #map { width: 100%; height: 50vh; margin-top: 10px; }
+  #result, #selectionContainer, #usageContainer { width: 90%; max-width: 400px; margin-top: 10px; }
 </style>
 </head>
 <body>
 
 <h1>餐廳隨機推薦器</h1>
+
 <p>請輸入地址（縣市 區 街道，例如：新北市三重區五華街）:</p>
-<input type="text" id="address" style="width:300px;" placeholder="新北市三重區五華街">
+<input type="text" id="address" placeholder="新北市三重區五華街">
 <button onclick="findRestaurants()">搜尋附近餐廳</button>
 
 <div id="selectionContainer"></div>
 <div id="result"></div>
+<div id="usageContainer">本月 LocationIQ API 使用次數: <span id="usageCount">0</span></div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
 const API_KEY = "pk.9052647f63ab5ea241dee09e510957f7"; // 你的 LocationIQ API Key
 let map;
-let markers = [];
+let restaurantMarker = null; // 只標記抽出的餐廳
 let restaurants = [];
 let selectedLocation = null;
 
 // 初始化地圖
-function initMap(lat=25.0375, lon=121.5637) {
+function initMap(lat=25.0375, lon=121.5637, zoom=15) {
   if(map) map.remove();
-  map = L.map('map').setView([lat, lon], 15);
+  map = L.map('map').setView([lat, lon], zoom);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
+}
+
+// 更新 API 次數
+function updateUsageCount() {
+  const now = new Date();
+  const month = now.getFullYear() + "-" + (now.getMonth()+1);
+  let data = JSON.parse(localStorage.getItem("locationIQUsage") || "{}");
+  if(data.month !== month) data = { month, count: 0 };
+  document.getElementById("usageCount").textContent = data.count;
+  return data;
+}
+
+function incrementUsageCount() {
+  const now = new Date();
+  const month = now.getFullYear() + "-" + (now.getMonth()+1);
+  let data = JSON.parse(localStorage.getItem("locationIQUsage") || "{}");
+  if(data.month !== month) data = { month, count: 0 };
+  data.count += 1;
+  localStorage.setItem("locationIQUsage", JSON.stringify(data));
+  document.getElementById("usageCount").textContent = data.count;
 }
 
 // 隨機推薦餐廳
@@ -52,40 +73,34 @@ function pickRandomRestaurant() {
     <p>地址: ${r.address}</p>
     <button onclick="pickRandomRestaurant()">重新抽選</button>
   `;
-}
-
-// 在地圖上標記餐廳
-function markRestaurants() {
-  restaurants.forEach(r => {
-    const m = L.marker([r.lat, r.lon]).addTo(map).bindPopup(r.name);
-    markers.push(m);
-  });
+  // 更新地圖標記，僅顯示抽出的餐廳
+  if(restaurantMarker) map.removeLayer(restaurantMarker);
+  restaurantMarker = L.marker([r.lat, r.lon], {icon: L.icon({iconUrl: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png', iconSize:[32,32]})})
+                   .addTo(map)
+                   .bindPopup(r.name)
+                   .openPopup();
+  map.setView([r.lat, r.lon], 17);
 }
 
 // 當使用者選擇地點後
 function handleLocationSelect() {
   const select = document.getElementById("locationSelect");
   const idx = parseInt(select.value);
-  selectedLocation = select.dataset.locations ? JSON.parse(select.dataset.locations)[idx] : null;
+  selectedLocation = JSON.parse(select.dataset.locations)[idx];
   if(!selectedLocation) return;
 
   const lat = parseFloat(selectedLocation.lat);
   const lon = parseFloat(selectedLocation.lon);
 
-  // 初始化地圖
   initMap(lat, lon);
-
-  // 標示搜尋範圍 1 公里
   L.circle([lat, lon], { radius: 1000, color: 'blue', fillOpacity: 0.1 }).addTo(map);
 
-  // 查詢附近餐廳
   fetchNearbyRestaurants(lat, lon);
 }
 
 // 查詢附近餐廳
 async function fetchNearbyRestaurants(lat, lon) {
   try {
-    markers.forEach(m => map?.removeLayer(m));
     restaurants = [];
     document.getElementById("result").innerHTML = '';
 
@@ -108,7 +123,6 @@ async function fetchNearbyRestaurants(lat, lon) {
       lon: e.lon
     }));
 
-    markRestaurants();
     pickRandomRestaurant();
   } catch(err) {
     console.error(err);
@@ -121,16 +135,13 @@ async function findRestaurants() {
   const address = document.getElementById("address").value.trim();
   if(!address) return alert("請輸入地址");
 
-  // 清除舊標記
-  markers.forEach(m => map?.removeLayer(m));
-  markers = [];
-  restaurants = [];
-  selectedLocation = null;
+  incrementUsageCount(); // 計次數
+
   document.getElementById("result").innerHTML = '';
   document.getElementById("selectionContainer").innerHTML = '';
 
   try {
-    // 拆解使用者輸入，假設格式 "縣市區街道"
+    // 拆解地址 "縣市區街道"
     let state, city, street;
     const parts = address.match(/^(.{2,3}市)(.{2,3}區)(.+)$/);
     if(parts){
@@ -145,7 +156,6 @@ async function findRestaurants() {
     const geoData = await geoRes.json();
     if(!geoData.length) return alert("找不到地址");
 
-    // 使用 address 欄位比對縣市與區
     const filtered = geoData.filter(item => {
       const a = item.address || {};
       return a.state?.includes(state) && a.city?.includes(city);
@@ -154,7 +164,7 @@ async function findRestaurants() {
     let locationsToSelect = filtered.length > 0 ? filtered : geoData;
     if(filtered.length === 0) alert("精確匹配失敗，使用第一筆結果，請確認位置是否正確");
 
-    // 建立下拉選單
+    // 下拉選單
     const container = document.getElementById("selectionContainer");
     const select = document.createElement("select");
     select.id = "locationSelect";
@@ -177,8 +187,9 @@ async function findRestaurants() {
   }
 }
 
-// 預設地圖到台北中心
+// 初始化地圖與使用次數
 initMap();
+updateUsageCount();
 </script>
 </body>
 </html>
