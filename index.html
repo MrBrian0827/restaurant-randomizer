@@ -44,7 +44,6 @@ input, button, select { padding:8px; margin:5px 0; width:100%; max-width:400px; 
 <script>
 // ================== ⚙ 設定 API Key 與月額次數 ==================
 const API_KEY="pk.aeb8620c031cbdb9dd58ed17c9aaa991"; // <-- 填入你的 API Key
-const API_REGION="ap1"; // <-- 根據你註冊的 Region (us1 / ap1 / eu1 ...)
 const MONTHLY_LIMIT=5000;
 
 // ================== API 次數管理 ==================
@@ -82,7 +81,7 @@ function searchAddress(){
     const q=document.getElementById("addressInput").value.trim();
     if(!q){ alert("請輸入地址"); return; }
 
-    fetch(`https://${API_REGION}.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
+    fetch(`https://locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
     .then(res=>{
         if(res.status===401) throw new Error("API_KEY_INVALID");
         if(!res.ok) throw new Error("API_ERROR");
@@ -115,7 +114,7 @@ function confirmAddress(){
     if(index==="") return;
     const q=document.getElementById("addressInput").value.trim();
 
-    fetch(`https://${API_REGION}.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
+    fetch(`https://locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
     .then(res=>{
         if(res.status===401) throw new Error("API_KEY_INVALID");
         if(!res.ok) throw new Error("API_ERROR");
