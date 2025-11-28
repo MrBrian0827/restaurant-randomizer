@@ -39,10 +39,10 @@ input, button, select { padding:8px; margin:5px 0; width:100%; max-width:400px; 
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
-const API_KEY="YOUR_LOCATIONIQ_KEY_HERE"; // 替換
+const API_KEY="pk.9052647f63ab5ea241dee09e510957f7"; // 你的 LocationIQ key
 const MONTHLY_LIMIT=5000;
 
-// API 使用次數
+// ---------------- API 次數紀錄 ----------------
 function initApiUsage(){
     const now=new Date();
     const currentMonth=now.getFullYear()*100+(now.getMonth()+1);
@@ -53,57 +53,90 @@ function initApiUsage(){
     }
     return usage;
 }
-function incrementApiUsage(){ let usage=initApiUsage(); usage.count++; localStorage.setItem("locationiq_usage",JSON.stringify(usage)); updateApiUsageUI(); }
-function updateApiUsageUI(){ let usage=initApiUsage(); let remain=MONTHLY_LIMIT-usage.count; if(remain<0) remain=0; document.getElementById("apiUsage").innerText=`LocationIQ 每月免費額度：${MONTHLY_LIMIT} 次\n本月已使用：${usage.count} 次\n剩餘：${remain} 次`; }
+function incrementApiUsage(){ 
+    let usage=initApiUsage(); 
+    usage.count++; 
+    localStorage.setItem("locationiq_usage",JSON.stringify(usage)); 
+    updateApiUsageUI(); 
+}
+function updateApiUsageUI(){ 
+    let usage=initApiUsage(); 
+    let remain=MONTHLY_LIMIT-usage.count; if(remain<0) remain=0; 
+    document.getElementById("apiUsage").innerText=
+        `LocationIQ 每月免費額度：${MONTHLY_LIMIT} 次\n本月已使用：${usage.count} 次\n剩餘：${remain} 次`;
+}
 
-// 地圖初始化
+// ---------------- 地圖初始化 ----------------
 const map=L.map('map').setView([25.0478,121.5319],13);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 let restaurantMarkers=[];
 let lastRestaurants=[], lastLat=0, lastLon=0;
 
-// 查地址
+// ---------------- 查地址 ----------------
 function searchAddress(){
     const q=document.getElementById("addressInput").value.trim();
     if(!q){ alert("請輸入地址"); return; }
-    incrementApiUsage();
+
     fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
-    .then(res=>{ if(!res.ok) throw new Error("API_ERROR"); return res.json(); })
+    .then(res=>{
+        if(res.status===401) throw new Error("API_KEY_INVALID");
+        if(!res.ok) throw new Error("API_ERROR");
+        return res.json();
+    })
     .then(data=>{
         if(!Array.isArray(data)||data.length===0){ alert("找不到這個地址，請重新輸入"); return; }
+
+        // 成功取得資料後才增加 API 次數
+        incrementApiUsage();
+
         const select=document.getElementById("addressSelect");
         select.style.display="block";
         select.innerHTML="";
         data.forEach((d,i)=>{ const opt=document.createElement("option"); opt.value=i; opt.textContent=d.display_name; select.appendChild(opt); });
         alert("請從下方清單選擇正確的地址");
     })
-    .catch(err=>{ console.error(err); alert("定位服務異常，請稍後再試"); });
+    .catch(err=>{
+        console.error(err);
+        if(err.message==="API_KEY_INVALID") alert("API key 無效，請確認你的 LocationIQ API key");
+        else alert("定位服務異常，請稍後再試");
+    });
 }
 
-// 確認地址 → 查餐廳
+// ---------------- 確認地址 → 查餐廳 ----------------
 function confirmAddress(){
     const select=document.getElementById("addressSelect");
     const index=select.value;
     if(index==="") return;
     const q=document.getElementById("addressInput").value.trim();
-    incrementApiUsage();
+
     fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
-    .then(res=>res.json())
+    .then(res=>{
+        if(res.status===401) throw new Error("API_KEY_INVALID");
+        if(!res.ok) throw new Error("API_ERROR");
+        return res.json();
+    })
     .then(data=>{
         const item=data[index];
         lastLat=parseFloat(item.lat); lastLon=parseFloat(item.lon);
         map.setView([lastLat,lastLon],15);
+        incrementApiUsage(); // 成功才加一次
         findRestaurants(lastLat,lastLon);
+    })
+    .catch(err=>{
+        console.error(err);
+        if(err.message==="API_KEY_INVALID") alert("API key 無效，請確認你的 LocationIQ API key");
+        else alert("定位服務異常，請稍後再試");
     });
 }
 
-// 查附近餐廳
+// ---------------- 查附近餐廳 ----------------
 function findRestaurants(lat,lon){
     const overpassUrl=`https://overpass-api.de/api/interpreter?data=[out:json];(
         node["amenity"="restaurant"](around:1000,${lat},${lon});
         way["amenity"="restaurant"](around:1000,${lat},${lon});
         relation["amenity"="restaurant"](around:1000,${lat},${lon});
     );out center tags;`;
+
     fetch(overpassUrl)
     .then(res=>res.json())
     .then(data=>{
@@ -117,14 +150,12 @@ function findRestaurants(lat,lon){
     .catch(err=>{ console.error(err); alert("查詢餐廳時發生錯誤"); });
 }
 
-// 顯示餐廳卡片
+// ---------------- 顯示餐廳卡片 ----------------
 function displayRestaurantCards(){
-    // 清空地圖標記
     restaurantMarkers.forEach(m=>map.removeLayer(m));
     restaurantMarkers=[];
     const cardsDiv=document.getElementById("cards");
     cardsDiv.innerHTML="";
-    // 隨機打亂陣列並選前 5 個
     const shuffled=lastRestaurants.sort(()=>0.5-Math.random());
     const selected=shuffled.slice(0,5);
     selected.forEach(r=>{
@@ -133,18 +164,18 @@ function displayRestaurantCards(){
         const hours=r.tags.opening_hours||"未提供營業時間";
         const addr=r.tags["addr:full"]||r.tags["addr:street"]||"無地址資料";
 
-        // 地圖標記
         const marker=L.marker([rlat,rlon],{icon:L.icon({iconUrl:"https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=restaurant|ff0000", iconSize:[32,32]})}).addTo(map);
         restaurantMarkers.push(marker);
+        marker.bindPopup(`<b>${name}</b><br>${addr}<br>營業時間：${hours}`);
 
-        // 卡片
         const card=document.createElement("div"); card.className="card";
         card.innerHTML=`<b>${name}</b><br>營業時間：${hours}`;
-        card.onclick=()=>{ map.setView([rlat,rlon],17); marker.openPopup(); };
+        card.onclick=()=>{
+            map.setView([rlat,rlon],17);
+            marker.openPopup();
+            window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rlat + "," + rlon)}`,"_blank");
+        };
         cardsDiv.appendChild(card);
-
-        // popup
-        marker.bindPopup(`<b>${name}</b><br>${addr}<br>營業時間：${hours}`);
     });
 }
 
