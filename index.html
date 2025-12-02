@@ -44,7 +44,7 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 let addressResults = [];
 let lastRestaurants = [];
 let restaurantMarkers = [];
-let selectedRestaurants = []; // 隨機三間餐廳
+let selectedRestaurants = [];
 
 // 搜尋地址
 function searchAddress(){
@@ -60,13 +60,22 @@ function searchAddress(){
     .then(data=>{
         if(!Array.isArray(data) || data.length===0){ alert("找不到這個地址，請重新輸入"); return; }
 
-        addressResults = data;
+        // 篩選完全匹配縣市+鄉鎮+街道
+        const inputParts = document.getElementById("addressInput").value.split(/[\s,，]/);
+        let matched = data.filter(d=>{
+            const display = d.display_name;
+            return inputParts.every(p => display.includes(p));
+        });
+
+        if(matched.length===0) matched = data; // 沒有完全匹配就保留全部
+
+        addressResults = matched;
         const select = document.getElementById("addressSelect");
         select.innerHTML="";
-        select.style.display = data.length>1 ? "block" : "none";
+        select.style.display = matched.length>1 ? "block" : "none";
 
-        if(data.length>1){
-            data.forEach((d,i)=>{
+        if(matched.length>1){
+            matched.forEach((d,i)=>{
                 const opt = document.createElement("option");
                 opt.value = i;
                 opt.textContent = d.display_name;
@@ -74,7 +83,7 @@ function searchAddress(){
             });
             alert("請從下方清單選擇正確的地址");
         } else {
-            setAddress(data[0]);
+            setAddress(matched[0]);
         }
     })
     .catch(err=>{
@@ -92,7 +101,7 @@ function confirmAddress(){
     setAddress(addressResults[index]);
 }
 
-// 設定地址經緯度並查餐廳
+// 設定地址並查餐廳
 function setAddress(item){
     const lat = parseFloat(item.lat);
     const lon = parseFloat(item.lon);
@@ -131,7 +140,7 @@ function findRestaurants(lat, lon){
     });
 }
 
-// 顯示餐廳、隨機挑三間紅色大頭針
+// 顯示餐廳紅色 marker + 三張卡片
 function drawRestaurants(){
     restaurantMarkers.forEach(m=>map.removeLayer(m));
     restaurantMarkers=[];
@@ -139,52 +148,39 @@ function drawRestaurants(){
     const cardsDiv = document.getElementById("cards");
     cardsDiv.innerHTML="";
 
-    // 隨機挑三間餐廳
+    // 隨機三間餐廳
     const shuffled = lastRestaurants.sort(()=>0.5-Math.random());
     selectedRestaurants = shuffled.slice(0,3);
 
-    lastRestaurants.forEach(r=>{
-        const rlat = r.lat || r.center?.lat;
-        const rlon = r.lon || r.center?.lon;
-        const name = r.tags.name || "未提供名稱";
-        const hours = r.tags.opening_hours || "未提供營業時間";
-
-        // 紅色只有隨機三間，其他綠色
-        const isSelected = selectedRestaurants.includes(r);
-        const marker = L.marker([rlat, rlon],{
-            icon: L.icon({
-                iconUrl: isSelected ? "https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=restaurant|ff0000"
-                                     : "https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=restaurant|008000",
-                iconSize:[32,32]
-            })
-        }).addTo(map);
-        restaurantMarkers.push(marker);
-        marker.bindPopup(`<b>${name}</b><br>營業時間：${hours}`);
-    });
-
-    // 生成三張卡片
+    // 只為三間餐廳加 marker
     selectedRestaurants.forEach(r=>{
         const rlat = r.lat || r.center?.lat;
         const rlon = r.lon || r.center?.lon;
         const name = r.tags.name || "未提供名稱";
         const hours = r.tags.opening_hours || "未提供營業時間";
 
+        const marker = L.marker([rlat, rlon],{
+            icon: L.icon({
+                iconUrl: "https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=restaurant|ff0000",
+                iconSize:[32,32]
+            })
+        }).addTo(map);
+        restaurantMarkers.push(marker);
+        marker.bindPopup(`<b>${name}</b><br>營業時間：${hours}`);
+
+        // 生成字卡
         const card = document.createElement("div");
         card.className="card";
         card.innerHTML=`<b>${name}</b><br>營業時間：${hours}`;
         card.onclick=()=>{
             map.setView([rlat, rlon],17);
-            const marker = restaurantMarkers.find(m=>{
-                const pos = m.getLatLng();
-                return pos.lat===rlat && pos.lng===rlon;
-            });
-            if(marker) marker.openPopup();
+            marker.openPopup();
             window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(rlat+","+rlon)}`, "_blank");
         };
         cardsDiv.appendChild(card);
     });
 
-    // 自動聚焦第一間選中的餐廳
+    // 聚焦第一間
     if(selectedRestaurants.length){
         const rlat = selectedRestaurants[0].lat || selectedRestaurants[0].center?.lat;
         const rlon = selectedRestaurants[0].lon || selectedRestaurants[0].center?.lon;
@@ -198,6 +194,5 @@ function reshuffleRestaurants(){
     drawRestaurants();
 }
 </script>
-
 </body>
 </html>
