@@ -43,7 +43,7 @@ input, button, select { padding:8px; margin:5px 0; width:100%; max-width:400px; 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
 // ================== ⚙ 設定 API Key 與月額次數 ==================
-const API_KEY="pk.bc63f534da0350a75d49564feb994bfd"; // <-- 填入你的 API Key
+const API_KEY="pk.aeb8620c031cbdb9dd58ed17c9aaa991"; // <-- 填入你的 API Key
 const MONTHLY_LIMIT=5000;
 
 // ================== API 次數管理 ==================
@@ -67,7 +67,7 @@ function updateApiUsageUI(){
     let usage=initApiUsage(); 
     let remain=MONTHLY_LIMIT-usage.count; if(remain<0) remain=0; 
     document.getElementById("apiUsage").innerText=
-        `LocationIQ 每月免費額度：${MONTHLY_LIMIT} 次\n本月已使用：${usage.count} 次\n剩餘：${remain} 次\n\n⚠️ 提示：此 API key 為前端使用，公開可見。請僅在授權網站使用，避免濫用。`;
+        `LocationIQ 每月免費額度：${MONTHLY_LIMIT} 次\n本月已使用：${usage.count} 次\n剩餘：${remain} 次\n\n⚠️ 此 API key 為前端使用，請僅在授權網站使用，避免濫用。`;
 }
 
 // ================== 地圖初始化 ==================
@@ -81,9 +81,10 @@ function searchAddress(){
     const q=document.getElementById("addressInput").value.trim();
     if(!q){ alert("請輸入地址"); return; }
 
-    fetch(`https://locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
+    fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
     .then(res=>{
         if(res.status===401) throw new Error("API_KEY_INVALID");
+        if(res.status===403) throw new Error("API_KEY_FORBIDDEN");
         if(!res.ok) throw new Error("API_ERROR");
         return res.json();
     })
@@ -97,12 +98,24 @@ function searchAddress(){
         const select=document.getElementById("addressSelect");
         select.style.display="block";
         select.innerHTML="";
-        data.forEach((d,i)=>{ const opt=document.createElement("option"); opt.value=i; opt.textContent=d.display_name; select.appendChild(opt); });
+        const inputCity=q.split(/市|縣/)[0]+"市"; // 提取使用者輸入的城市
+        data.forEach((d,i)=>{
+            const display=d.display_name;
+            const option=document.createElement("option");
+            option.value=i;
+            option.textContent=display;
+            // 標註不匹配城市
+            if(!display.includes(inputCity)){
+                option.textContent += " ⚠️ 城市可能不正確";
+            }
+            select.appendChild(option);
+        });
         document.getElementById("addressHint").innerText="請從下方清單選擇正確的地址";
     })
     .catch(err=>{
         console.error(err);
         if(err.message==="API_KEY_INVALID") alert("API key 無效，請確認你的 LocationIQ API key");
+        else if(err.message==="API_KEY_FORBIDDEN") alert("API key 未授權使用此網站，請在 LocationIQ 控制台設定 HTTP Referrer");
         else alert("定位服務異常，請稍後再試");
     });
 }
@@ -114,9 +127,10 @@ function confirmAddress(){
     if(index==="") return;
     const q=document.getElementById("addressInput").value.trim();
 
-    fetch(`https://locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
+    fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json`)
     .then(res=>{
         if(res.status===401) throw new Error("API_KEY_INVALID");
+        if(res.status===403) throw new Error("API_KEY_FORBIDDEN");
         if(!res.ok) throw new Error("API_ERROR");
         return res.json();
     })
@@ -131,6 +145,7 @@ function confirmAddress(){
     .catch(err=>{
         console.error(err);
         if(err.message==="API_KEY_INVALID") alert("API key 無效，請確認你的 LocationIQ API key");
+        else if(err.message==="API_KEY_FORBIDDEN") alert("API key 未授權使用此網站，請在 LocationIQ 控制台設定 HTTP Referrer");
         else alert("定位服務異常，請稍後再試");
     });
 }
