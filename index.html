@@ -51,7 +51,14 @@ function searchAddress(){
     const query = document.getElementById("addressInput").value.trim();
     if(!query){ alert("請輸入地址"); return; }
 
-    fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(query)}&format=json&countrycodes=TW`)
+    // 檢查至少包含三層：縣市 + 區 + 街道
+    const parts = query.split(/[\s,，]/);
+    if(parts.length < 3){
+        alert("請輸入完整地址至少到街道名稱，例如：新北市三重區五華街");
+        return;
+    }
+
+    fetch(`https://locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(query)}&format=json&countrycodes=TW`)
     .then(res=>{
         if(res.status===401) throw new Error("API_KEY_INVALID");
         if(!res.ok) throw new Error("API_ERROR");
@@ -61,7 +68,7 @@ function searchAddress(){
         if(!Array.isArray(data) || data.length===0){ alert("找不到這個地址，請重新輸入"); return; }
 
         // 篩選完全匹配縣市+鄉鎮+街道
-        const inputParts = document.getElementById("addressInput").value.split(/[\s,，]/);
+        const inputParts = parts;
         let matched = data.filter(d=>{
             const display = d.display_name;
             return inputParts.every(p => display.includes(p));
@@ -152,7 +159,6 @@ function drawRestaurants(){
     const shuffled = lastRestaurants.sort(()=>0.5-Math.random());
     selectedRestaurants = shuffled.slice(0,3);
 
-    // 只為三間餐廳加 marker
     selectedRestaurants.forEach(r=>{
         const rlat = r.lat || r.center?.lat;
         const rlon = r.lon || r.center?.lon;
@@ -168,7 +174,6 @@ function drawRestaurants(){
         restaurantMarkers.push(marker);
         marker.bindPopup(`<b>${name}</b><br>營業時間：${hours}`);
 
-        // 生成字卡
         const card = document.createElement("div");
         card.className="card";
         card.innerHTML=`<b>${name}</b><br>營業時間：${hours}`;
@@ -180,7 +185,6 @@ function drawRestaurants(){
         cardsDiv.appendChild(card);
     });
 
-    // 聚焦第一間
     if(selectedRestaurants.length){
         const rlat = selectedRestaurants[0].lat || selectedRestaurants[0].center?.lat;
         const rlon = selectedRestaurants[0].lon || selectedRestaurants[0].center?.lon;
