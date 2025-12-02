@@ -4,14 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>餐廳隨機推薦器</title>
-
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <style>
 body { margin:0; font-family: Arial,sans-serif; display:flex; flex-direction:column; height:100vh; }
 #controls { padding:10px; background:#f2f2f2; }
 input, button, select { padding:8px; margin:5px 0; width:100%; max-width:400px; }
 #map { flex:1; width:100%; }
-#info, #addressHint { padding:10px; background:#fff; font-size:16px; }
+#info { padding:10px; background:#fff; font-size:16px; }
 #apiUsage { font-size:14px; color:#555; margin-top:10px; white-space:pre-line; }
 #cards { display:flex; flex-wrap:wrap; margin-top:10px; }
 .card {
@@ -21,7 +20,6 @@ input, button, select { padding:8px; margin:5px 0; width:100%; max-width:400px; 
 }
 .card:hover { box-shadow:0 3px 6px rgba(0,0,0,0.3); background:#fff; }
 @media(min-width:600px){ .card{ width:200px; } }
-#addressHint { color: #c00; margin-top:5px; }
 </style>
 </head>
 <body>
@@ -31,7 +29,6 @@ input, button, select { padding:8px; margin:5px 0; width:100%; max-width:400px; 
 <input type="text" id="addressInput" placeholder="請輸入地址（例：新北市三重區五華街）">
 <button onclick="searchAddress()">搜尋地址</button>
 <select id="addressSelect" onchange="confirmAddress()" style="display:none;"></select>
-<div id="addressHint"></div>
 <button id="reshuffleBtn" onclick="reshuffleRestaurants()" style="display:none;">重新抽選五家餐廳</button>
 <div id="apiUsage"></div>
 <div id="cards"></div>
@@ -51,23 +48,23 @@ function initApiUsage(){
     const now=new Date();
     const currentMonth=now.getFullYear()*100+(now.getMonth()+1);
     let usage=JSON.parse(localStorage.getItem("locationiq_usage"));
-    if(!usage||usage.month!==currentMonth){
+    if(!usage || usage.month!==currentMonth){
         usage={month:currentMonth,count:0};
         localStorage.setItem("locationiq_usage",JSON.stringify(usage));
     }
     return usage;
 }
-function incrementApiUsage(){ 
-    let usage=initApiUsage(); 
-    usage.count++; 
-    localStorage.setItem("locationiq_usage",JSON.stringify(usage)); 
-    updateApiUsageUI(); 
+function incrementApiUsage(){
+    let usage=initApiUsage();
+    usage.count++;
+    localStorage.setItem("locationiq_usage",JSON.stringify(usage));
+    updateApiUsageUI();
 }
-function updateApiUsageUI(){ 
-    let usage=initApiUsage(); 
-    let remain=MONTHLY_LIMIT-usage.count; if(remain<0) remain=0; 
+function updateApiUsageUI(){
+    let usage=initApiUsage();
+    let remain=MONTHLY_LIMIT-usage.count; if(remain<0) remain=0;
     document.getElementById("apiUsage").innerText=
-        `LocationIQ 每月免費額度：${MONTHLY_LIMIT} 次\n本月已使用：${usage.count} 次\n剩餘：${remain} 次\n\n⚠️ 此 API key 為前端使用，請僅在授權網站使用，避免濫用。`;
+        `LocationIQ 每月免費額度：${MONTHLY_LIMIT} 次\n本月已使用：${usage.count} 次\n剩餘：${remain} 次\n\n⚠️ API Key 為前端公開，僅在授權網域使用`;
 }
 
 // ================== 地圖初始化 ==================
@@ -81,57 +78,31 @@ function searchAddress(){
     const q=document.getElementById("addressInput").value.trim();
     if(!q){ alert("請輸入地址"); return; }
 
-    fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json&addressdetails=1`)
+    fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json&countrycodes=TW`)
     .then(res=>{
         if(res.status===401) throw new Error("API_KEY_INVALID");
-        if(res.status===403) throw new Error("API_KEY_FORBIDDEN");
         if(!res.ok) throw new Error("API_ERROR");
         return res.json();
     })
     .then(data=>{
-        if(!Array.isArray(data)||data.length===0){ 
-            document.getElementById("addressHint").innerText="找不到這個地址，請重新輸入";
-            return; 
-        }
+        if(!Array.isArray(data) || data.length===0){ alert("找不到這個地址，請重新輸入"); return; }
+
         incrementApiUsage();
 
         const select=document.getElementById("addressSelect");
         select.style.display="block";
         select.innerHTML="";
-        const inputCityMatch = q.match(/(.*?[市|縣])/);  // 提取縣市
-        const inputCity = inputCityMatch ? inputCityMatch[1] : "";
-        const inputDistrictMatch = q.match(/.*?[市|縣](.*?[區|鄉|鎮])/);
-        const inputDistrict = inputDistrictMatch ? inputDistrictMatch[1] : "";
-        const inputStreetMatch = q.match(/.*?[區|鄉|鎮](.*)/);
-        const inputStreet = inputStreetMatch ? inputStreetMatch[1] : "";
-
-        let filtered = data.filter(d=>{
-            const ad = d.address || {};
-            // 放寬比對條件
-            const cityMatch = (ad.city===inputCity || ad.state===inputCity);
-            const districtMatch = !inputDistrict || (ad.suburb && ad.suburb.includes(inputDistrict)) || (ad.town && ad.town.includes(inputDistrict)) || (ad.village && ad.village.includes(inputDistrict));
-            const streetMatch = !inputStreet || (ad.road && ad.road.includes(inputStreet));
-            return cityMatch && districtMatch && streetMatch;
+        data.forEach((d,i)=>{
+            const opt=document.createElement("option");
+            opt.value=i;
+            opt.textContent=d.display_name;
+            select.appendChild(opt);
         });
-
-        if(filtered.length===0){
-            document.getElementById("addressHint").innerText="找不到符合行政區的地址，請重新輸入更完整地址";
-            return;
-        }
-
-        filtered.forEach((d,i)=>{
-            const display=`${d.address.city||d.address.state}, ${d.address.suburb||d.address.town||d.address.village||""}, ${d.address.road||""}, 台灣`;
-            const option=document.createElement("option");
-            option.value=i;
-            option.textContent=display;
-            select.appendChild(option);
-        });
-        document.getElementById("addressHint").innerText="請從下方清單選擇正確的地址";
+        alert("請從下方清單選擇正確的地址");
     })
     .catch(err=>{
         console.error(err);
         if(err.message==="API_KEY_INVALID") alert("API key 無效，請確認你的 LocationIQ API key");
-        else if(err.message==="API_KEY_FORBIDDEN") alert("API key 未授權使用此網站，請在 LocationIQ 控制台設定 HTTP Referrer");
         else alert("定位服務異常，請稍後再試");
     });
 }
@@ -142,27 +113,22 @@ function confirmAddress(){
     const index=select.value;
     if(index==="") return;
 
-    const q=document.getElementById("addressInput").value.trim();
-
-    fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(q)}&format=json&addressdetails=1`)
+    fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(select.options[index].text)}&format=json`)
     .then(res=>{
         if(res.status===401) throw new Error("API_KEY_INVALID");
-        if(res.status===403) throw new Error("API_KEY_FORBIDDEN");
         if(!res.ok) throw new Error("API_ERROR");
         return res.json();
     })
     .then(data=>{
-        const item = data[index];
+        const item=data[0]; // 取選擇的第一筆
         lastLat=parseFloat(item.lat); lastLon=parseFloat(item.lon);
         map.setView([lastLat,lastLon],15);
         incrementApiUsage();
         findRestaurants(lastLat,lastLon);
-        document.getElementById("addressHint").innerText="";
     })
     .catch(err=>{
         console.error(err);
         if(err.message==="API_KEY_INVALID") alert("API key 無效，請確認你的 LocationIQ API key");
-        else if(err.message==="API_KEY_FORBIDDEN") alert("API key 未授權使用此網站，請在 LocationIQ 控制台設定 HTTP Referrer");
         else alert("定位服務異常，請稍後再試");
     });
 }
@@ -180,7 +146,12 @@ function findRestaurants(lat,lon){
     .then(data=>{
         let elements=data.elements;
         if(!elements.length){ alert("附近 1 公里沒有找到餐廳"); return; }
-        elements=elements.filter(e=>{ const t=e.tags||{}; if(t.disused||t.abandoned||t["disused:amenity"]) return false; if(t.shop==="vacant") return false; return true; });
+        elements=elements.filter(e=>{
+            const t=e.tags||{};
+            if(t.disused||t.abandoned||t["disused:amenity"]) return false;
+            if(t.shop==="vacant") return false;
+            return true;
+        });
         if(!elements.length){ alert("找到餐廳，但似乎都已歇業"); return; }
         lastRestaurants=elements;
         document.getElementById("reshuffleBtn").style.display="inline-block";
@@ -226,6 +197,5 @@ function reshuffleRestaurants(){
 
 updateApiUsageUI();
 </script>
-
 </body>
 </html>
