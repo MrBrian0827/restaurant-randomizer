@@ -51,14 +51,13 @@ function searchAddress(){
     const query = document.getElementById("addressInput").value.trim();
     if(!query){ alert("請輸入地址"); return; }
 
-    // 強制輸入到街道名稱（縣市 + 區 + 街道）
     const re = /[^\s,，]+市[^\s,，]+區[^\s,，]+/;
     if(!re.test(query)){
         alert("請輸入完整地址至少到街道名稱，例如：新北市三重區五華街");
         return;
     }
 
-    fetch(`https://locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(query)}&format=json&countrycodes=TW`)
+    fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(query)}&format=json&countrycodes=TW`)
     .then(res=>{
         if(res.status===401) throw new Error("API_KEY_INVALID");
         if(!res.ok) throw new Error("API_ERROR");
@@ -67,22 +66,12 @@ function searchAddress(){
     .then(data=>{
         if(!Array.isArray(data) || data.length===0){ alert("找不到這個地址，請重新輸入"); return; }
 
-        // 篩選完全匹配縣市+區+街道
-        const inputParts = query.split(/[\s,，]+/);
-        let matched = data.filter(d=>{
-            const display = d.display_name;
-            return inputParts.every(p => display.includes(p));
-        });
-
-        if(matched.length===0) matched = data; // 沒有完全匹配就保留全部
-
-        addressResults = matched;
+        addressResults = data;
         const select = document.getElementById("addressSelect");
         select.innerHTML="";
-        select.style.display = matched.length>1 ? "block" : "none";
-
-        if(matched.length>1){
-            matched.forEach((d,i)=>{
+        if(data.length>1){
+            select.style.display="block";
+            data.forEach((d,i)=>{
                 const opt = document.createElement("option");
                 opt.value = i;
                 opt.textContent = d.display_name;
@@ -90,7 +79,8 @@ function searchAddress(){
             });
             alert("請從下方清單選擇正確的地址");
         } else {
-            setAddress(matched[0]);
+            select.style.display="none";
+            setAddress(data[0]);
         }
     })
     .catch(err=>{
@@ -155,7 +145,6 @@ function drawRestaurants(){
     const cardsDiv = document.getElementById("cards");
     cardsDiv.innerHTML="";
 
-    // 隨機三間餐廳
     const shuffled = lastRestaurants.sort(()=>0.5-Math.random());
     selectedRestaurants = shuffled.slice(0,3);
 
@@ -165,12 +154,7 @@ function drawRestaurants(){
         const name = r.tags.name || "未提供名稱";
         const hours = r.tags.opening_hours || "未提供營業時間";
 
-        const marker = L.marker([rlat, rlon],{
-            icon: L.icon({
-                iconUrl: "https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=restaurant|ff0000",
-                iconSize:[32,32]
-            })
-        }).addTo(map);
+        const marker = L.marker([rlat, rlon]).addTo(map);
         restaurantMarkers.push(marker);
         marker.bindPopup(`<b>${name}</b><br>營業時間：${hours}`);
 
