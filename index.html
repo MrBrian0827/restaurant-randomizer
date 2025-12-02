@@ -43,7 +43,7 @@ input, button, select { padding:8px; margin:5px 0; width:100%; max-width:400px; 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
 // ================== ⚙ 設定 API Key 與月額次數 ==================
-const API_KEY="pk.bc63f534da0350a75d49564feb994bfd"; // <-- 填入你的 API Key
+const API_KEY="pk.bc63f534da0350a75d49564feb994bfd";
 const MONTHLY_LIMIT=5000;
 
 // ================== API 次數管理 ==================
@@ -107,9 +107,11 @@ function searchAddress(){
 
         let filtered = data.filter(d=>{
             const ad = d.address || {};
-            return (ad.city===inputCity || ad.state===inputCity) &&
-                   (ad.suburb===inputDistrict || ad.town===inputDistrict || ad.village===inputDistrict) &&
-                   (ad.road && ad.road.includes(inputStreet));
+            // 放寬比對條件
+            const cityMatch = (ad.city===inputCity || ad.state===inputCity);
+            const districtMatch = !inputDistrict || (ad.suburb && ad.suburb.includes(inputDistrict)) || (ad.town && ad.town.includes(inputDistrict)) || (ad.village && ad.village.includes(inputDistrict));
+            const streetMatch = !inputStreet || (ad.road && ad.road.includes(inputStreet));
+            return cityMatch && districtMatch && streetMatch;
         });
 
         if(filtered.length===0){
