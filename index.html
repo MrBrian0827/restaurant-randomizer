@@ -45,16 +45,21 @@ let addressResults = [];
 let lastRestaurants = [];
 let restaurantMarkers = [];
 let selectedRestaurants = [];
+let isSearching = false;
 
 // 搜尋地址
 function searchAddress(){
+    if(isSearching) return;
+    isSearching = true;
+
     const query = document.getElementById("addressInput").value.trim();
-    if(!query){ alert("請輸入地址"); return; }
+    if(!query){ alert("請輸入地址"); isSearching=false; return; }
 
     // 檢查是否至少到街名
     const re = /[^\s,，]+市[^\s,，]+區[^\s,，]+/;
     if(!re.test(query)){
         alert("請輸入完整地址至少到街道名稱，例如：新北市三重區五華街");
+        isSearching=false;
         return;
     }
 
@@ -65,9 +70,10 @@ function searchAddress(){
         return res.json();
     })
     .then(data=>{
+        isSearching=false;
         if(!Array.isArray(data) || data.length===0){ alert("找不到這個地址，請重新輸入"); return; }
 
-        // 對於街名重複的情況，優先顯示對應區域結果
+        // 對街名重複的情況，優先排序對應區域
         const districtMatch = query.match(/([^\s,，]+區)/);
         if(districtMatch){
             const district = districtMatch[1];
@@ -97,6 +103,7 @@ function searchAddress(){
     })
     .catch(err=>{
         console.error(err);
+        isSearching=false;
         if(err.message==="API_KEY_INVALID") alert("API key 無效，請確認你的 LocationIQ API key");
         else alert("定位服務異常，請稍後再試");
     });
