@@ -51,9 +51,9 @@ function searchAddress(){
     const query = document.getElementById("addressInput").value.trim();
     if(!query){ alert("請輸入地址"); return; }
 
-    // 檢查至少包含三層：縣市 + 區 + 街道
-    const parts = query.split(/[\s,，]/);
-    if(parts.length < 3){
+    // 強制輸入到街道名稱（縣市 + 區 + 街道）
+    const re = /[^\s,，]+市[^\s,，]+區[^\s,，]+/;
+    if(!re.test(query)){
         alert("請輸入完整地址至少到街道名稱，例如：新北市三重區五華街");
         return;
     }
@@ -67,8 +67,8 @@ function searchAddress(){
     .then(data=>{
         if(!Array.isArray(data) || data.length===0){ alert("找不到這個地址，請重新輸入"); return; }
 
-        // 篩選完全匹配縣市+鄉鎮+街道
-        const inputParts = parts;
+        // 篩選完全匹配縣市+區+街道
+        const inputParts = query.split(/[\s,，]+/);
         let matched = data.filter(d=>{
             const display = d.display_name;
             return inputParts.every(p => display.includes(p));
