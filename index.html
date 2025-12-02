@@ -8,7 +8,7 @@
 <style>
 body { margin:0; font-family: Arial,sans-serif; display:flex; flex-direction:column; height:100vh; }
 #controls { padding:10px; background:#f2f2f2; }
-input, button, select { padding:8px; margin:5px 0; width:100%; max-width:400px; }
+select, button { padding:8px; margin:5px 0; width:100%; max-width:400px; }
 #map { flex:1; width:100%; min-height:300px; }
 #cards { display:flex; flex-wrap:wrap; margin-top:10px; }
 .card { border:1px solid #ccc; border-radius:5px; padding:10px; margin:5px;
@@ -22,9 +22,11 @@ input, button, select { padding:8px; margin:5px 0; width:100%; max-width:400px; 
 
 <div id="controls">
 <h2>餐廳隨機推薦器</h2>
-<input type="text" id="addressInput" placeholder="請輸入地址（例：新北市三重區五華街）">
+
+<select id="citySelect"><option value="">選擇縣市</option></select>
+<select id="districtSelect"><option value="">選擇區</option></select>
+<select id="roadSelect"><option value="">選擇街道</option></select>
 <button id="searchBtn">搜尋地址</button>
-<select id="addressSelect" onchange="confirmAddress()" style="display:none;"></select>
 <button id="reshuffleBtn" onclick="reshuffleRestaurants()" style="display:none;">重新抽選三家餐廳</button>
 <div id="cards"></div>
 <div style="margin-top:10px; font-size:14px;">
@@ -39,118 +41,104 @@ LocationIQ 平台連結: <a href="https://locationiq.com/dashboard" target="_bla
 <script>
 const API_KEY="pk.bc63f534da0350a75d49564feb994bfd";
 
+// 地圖初始化
 let map = L.map('map').setView([25.0478,121.5319],13);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 
 let restaurantMarkers=[], lastRestaurants=[], lastLat=0, lastLon=0;
 let searching=false;
 
-// ================== 防止快速連點 ==================
-document.getElementById('searchBtn').addEventListener('click', () => {
-    if(searching) return;
-    searching = true;
-    setTimeout(()=>{ searching=false; }, 1200);
-    searchAddress();
+// 台灣縣市資料
+const taiwanData = {
+  "台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
+  "新北市":["板橋區","三重區","中和區","永和區","新莊區","新店區","樹林區","鶯歌區","三峽區","淡水區","汐止區","瑞芳區","土城區","蘆洲區","五股區","泰山區","林口區","八里區","深坑區","石碇區","坪林區","三芝區","石門區","金山區","萬里區","貢寮區","平溪區","雙溪區","烏來區","樹林區"],
+  "桃園市":["桃園區","中壢區","平鎮區","八德區","楊梅區","蘆竹區","龜山區","大溪區","龍潭區","大園區","觀音區","新屋區","復興區"],
+  "台中市":["中區","東區","南區","西區","北區","北屯區","西屯區","南屯區","太平區","大里區","霧峰區","烏日區","豐原區","后里區","石岡區","東勢區","和平區","新社區","潭子區","大雅區","神岡區","大肚區","沙鹿區","龍井區","梧棲區","清水區","大甲區","外埔區","大安區","太平區","大肚區","梧棲區"]
+};
+
+// 初始化縣市選單
+const citySelect = document.getElementById("citySelect");
+const districtSelect = document.getElementById("districtSelect");
+const roadSelect = document.getElementById("roadSelect");
+
+for(const city in taiwanData){
+    let opt = document.createElement("option");
+    opt.value = city; opt.textContent = city;
+    citySelect.appendChild(opt);
+}
+
+citySelect.addEventListener("change", ()=>{
+    const city = citySelect.value;
+    districtSelect.innerHTML='<option value="">選擇區</option>';
+    roadSelect.innerHTML='<option value="">選擇街道</option>';
+    if(city && taiwanData[city]){
+        taiwanData[city].forEach(d=>{
+            let opt = document.createElement("option"); opt.value=d; opt.textContent=d;
+            districtSelect.appendChild(opt);
+        });
+    }
 });
 
-// ================== 查地址 ==================
-function searchAddress(){
-    const q = document.getElementById("addressInput").value.trim();
-    if(!q){ alert("請輸入地址"); return; }
-    if(!q.includes("區") || !q.match(/[\u4e00-\u9fa5]{2,}街/)){ 
-        alert("請輸入完整地址至少到街道名稱，例如：新北市三重區五華街"); return; 
-    }
-
-    Promise.all([searchLocationIQ(q), searchNominatim(q)]).then(results=>{
-        let combined = [];
-        results.forEach(arr => { combined = combined.concat(arr); });
-        if(!combined.length){ alert("找不到符合的地址"); return; }
-
-        // 依照縣市 > 區 > 街道排序，優先完全匹配
-        const inputParts = parseTaiwanAddress(q); // {city, district, road}
-        combined.forEach(c => {
-            const addr = c.address;
-            c.matchScore = 0;
-            if(addr.city===inputParts.city) c.matchScore+=4;
-            if(addr.suburb===inputParts.district || addr.county===inputParts.district) c.matchScore+=2;
-            if(addr.road===inputParts.road) c.matchScore+=1;
+// 使用者選區後查詢街道建議（簡單用 Nominatim 搜尋街道）
+districtSelect.addEventListener("change", ()=>{
+    const city = citySelect.value;
+    const district = districtSelect.value;
+    roadSelect.innerHTML='<option value="">選擇街道</option>';
+    if(!city || !district) return;
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=TW&addressdetails=1&limit=20&q=${encodeURIComponent(city+district)}`)
+    .then(res=>res.json())
+    .then(data=>{
+        let roads = new Set();
+        data.forEach(d=>{
+            if(d.address.road) roads.add(d.address.road);
         });
-        combined.sort((a,b)=>b.matchScore-a.matchScore);
+        roads.forEach(r=>{
+            let opt = document.createElement("option"); opt.value=r; opt.textContent=r;
+            roadSelect.appendChild(opt);
+        });
+    });
+});
 
-        // 找到完全匹配的第一筆
-        const maxScore = combined[0].matchScore;
-        const bestMatches = combined.filter(c=>c.matchScore===maxScore);
-        if(bestMatches.length===1){
-            setAddress(bestMatches[0]);
-        } else {
-            const select = document.getElementById("addressSelect");
-            select.style.display="block";
-            select.innerHTML="";
-            bestMatches.forEach((item,i)=>{
-                const opt=document.createElement("option");
-                opt.value=i; opt.textContent=item.display_name;
-                select.appendChild(opt);
-            });
-            alert("請從下方清單選擇正確的地址");
-            lastRestaurants = bestMatches;
-        }
+// 搜尋按鈕
+document.getElementById('searchBtn').addEventListener('click', ()=>{
+    if(searching) return;
+    searching=true;
+    setTimeout(()=>{ searching=false; },1200);
+
+    const city=citySelect.value, district=districtSelect.value, road=roadSelect.value;
+    if(!city || !district || !road){ alert("請完整選擇縣市、區、街道"); return; }
+    const fullAddr = `${city}${district}${road}`;
+
+    searchAddress(fullAddr);
+});
+
+// 查地址
+function searchAddress(addr){
+    Promise.all([searchLocationIQ(addr), searchNominatim(addr)]).then(results=>{
+        let combined = [];
+        results.forEach(arr=>combined=combined.concat(arr));
+        if(!combined.length){ alert("找不到符合地址"); return; }
+
+        lastLat = combined[0].lat;
+        lastLon = combined[0].lon;
+        map.setView([lastLat,lastLon],15);
+        findRestaurants(lastLat,lastLon);
     }).catch(err=>{ console.error(err); alert("定位服務異常，請稍後再試"); });
 }
 
-// ================== 解析台灣地址 ==================
-function parseTaiwanAddress(str){
-    // 嘗試抽取市、區、街
-    let city="", district="", road="";
-    const cityMatch = str.match(/[\u4e00-\u9fa5]+市/);
-    if(cityMatch) city=cityMatch[0];
-    const districtMatch = str.match(/[\u4e00-\u9fa5]+區/);
-    if(districtMatch) district=districtMatch[0];
-    const roadMatch = str.match(/[\u4e00-\u9fa5]+街/);
-    if(roadMatch) road=roadMatch[0];
-    return {city,district,road};
-}
-
-// ================== LocationIQ 查詢 ==================
 function searchLocationIQ(query){
-    return fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(query)}&format=json&countrycodes=TW&limit=5`)
+    return fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(query)}&format=json&countrycodes=TW&limit=3`)
     .then(res=>{ if(!res.ok) throw new Error("LocationIQ error"); return res.json(); })
-    .then(data=>data.map(d=>({
-        lat: parseFloat(d.lat),
-        lon: parseFloat(d.lon),
-        display_name: d.display_name,
-        address: d.address || {}
-    })));
+    .then(data=>data.map(d=>({lat:parseFloat(d.lat),lon:parseFloat(d.lon),display_name:d.display_name,tags:d})));
 }
 
-// ================== Nominatim 查詢 ==================
 function searchNominatim(query){
-    return fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&countrycodes=TW&limit=5`)
+    return fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&countrycodes=TW&limit=3`)
     .then(res=>res.json())
-    .then(data=>data.map(d=>({
-        lat: parseFloat(d.lat),
-        lon: parseFloat(d.lon),
-        display_name: d.display_name,
-        address: d.address || {}
-    })));
+    .then(data=>data.map(d=>({lat:parseFloat(d.lat),lon:parseFloat(d.lon),display_name:d.display_name,tags:d.address})));
 }
 
-// ================== 確認地址 ==================
-function confirmAddress(){
-    const select=document.getElementById("addressSelect");
-    const index=select.value;
-    if(index==="") return;
-    const item=lastRestaurants[index];
-    setAddress(item);
-}
-
-function setAddress(item){
-    lastLat = item.lat; lastLon = item.lon;
-    map.setView([lastLat,lastLon],15);
-    document.getElementById("addressSelect").style.display="none";
-    findRestaurants(lastLat,lastLon);
-}
-
-// ================== 查附近餐廳 ==================
+// 查附近餐廳
 function findRestaurants(lat,lon){
     const overpassUrl=`https://overpass-api.de/api/interpreter?data=[out:json];(
         node["amenity"="restaurant"](around:1000,${lat},${lon});
@@ -158,9 +146,7 @@ function findRestaurants(lat,lon){
         relation["amenity"="restaurant"](around:1000,${lat},${lon});
     );out center tags;`;
 
-    fetch(overpassUrl)
-    .then(res=>res.json())
-    .then(data=>{
+    fetch(overpassUrl).then(res=>res.json()).then(data=>{
         let elements=data.elements;
         if(!elements.length){ alert("附近 1 公里沒有找到餐廳"); return; }
         elements=elements.filter(e=>{
@@ -176,7 +162,7 @@ function findRestaurants(lat,lon){
     }).catch(err=>{ console.error(err); alert("查詢餐廳時發生錯誤"); });
 }
 
-// ================== 顯示餐廳卡片 ==================
+// 顯示餐廳卡片
 function displayRestaurantCards(){
     restaurantMarkers.forEach(m=>map.removeLayer(m));
     restaurantMarkers=[];
@@ -185,13 +171,14 @@ function displayRestaurantCards(){
     cardsDiv.innerHTML="";
     const shuffled=lastRestaurants.sort(()=>0.5-Math.random());
     const selected=shuffled.slice(0,3);
+
     selected.forEach(r=>{
         const rlat=r.lat||r.center?.lat;
         const rlon=r.lon||r.center?.lon;
         const name=r.tags?.name||"未提供名稱";
         const hours=r.tags?.opening_hours||"未提供營業時間";
 
-        const marker = L.marker([rlat,rlon], {icon:L.icon({
+        const marker = L.marker([rlat,rlon],{icon:L.icon({
             iconUrl:"https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=restaurant|ff0000",
             iconSize:[32,32]
         })}).addTo(map);
@@ -209,12 +196,9 @@ function displayRestaurantCards(){
     });
 }
 
-// ================== 重新抽選 ==================
+// 重新抽選
 function reshuffleRestaurants(){
-    if(!lastRestaurants.length){ 
-        alert("尚未查詢到餐廳，請先搜尋地址"); 
-        return; 
-    }
+    if(!lastRestaurants.length){ alert("尚未查詢到餐廳，請先搜尋地址"); return; }
     displayRestaurantCards();
 }
 </script>
