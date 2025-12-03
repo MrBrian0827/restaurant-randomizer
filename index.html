@@ -1,183 +1,232 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>台灣餐廳隨機推薦器</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-<style>
-body { margin:0; font-family:Arial,sans-serif; display:flex; flex-direction:column; height:100vh; }
-#controls { padding:10px; background:#f2f2f2; }
-select, input, button { padding:8px; margin:5px 0; width:100%; max-width:400px; }
-#map { flex:1; width:100%; }
-#cards { display:flex; flex-wrap:wrap; margin-top:10px; }
-#info { padding:10px; background:#fff; font-size:16px; }
-.card { border:1px solid #ccc; border-radius:5px; padding:10px; margin:5px;
-       width: calc(100% - 20px); max-width:250px; cursor:pointer; background:#fafafa;
-       transition:0.2s; box-shadow:0 1px 3px rgba(0,0,0,0.2);}
-.card:hover { box-shadow:0 3px 6px rgba(0,0,0,0.3); background:#fff; }
-@media(min-width:600px){ .card{ width:200px; } }
-</style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>餐廳隨機抽選器</title>
+
+    <!-- Leaflet 地圖 CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: Arial;
+            margin: 20px;
+        }
+        #map {
+            height: 350px;
+            margin-top: 20px;
+        }
+        .select-row {
+            margin-bottom: 10px;
+        }
+        .restaurant-card {
+            border: 1px solid #ccc;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            background: #fafafa;
+        }
+        .restaurant-card:hover {
+            background: #f0f0f0;
+        }
+    </style>
 </head>
+
 <body>
+    <h2>餐廳隨機抽選</h2>
 
-<div id="controls">
-<h2>台灣餐廳隨機推薦器</h2>
-<select id="citySelect" onchange="updateDistricts()"></select>
-<select id="districtSelect"></select>
-<input type="text" id="streetInput" placeholder="請輸入街道名稱（可選）">
-<button id="searchBtn" onclick="searchAddress()">搜尋餐廳</button>
-<button id="reshuffleBtn" style="display:none;" onclick="reshuffleRestaurants()">重新抽選三家餐廳</button>
-<div id="info"></div>
-<div id="cards"></div>
-</div>
+    <div class="select-row">
+        <label>縣市：</label>
+        <select id="citySelect"></select>
+    </div>
 
-<div id="map"></div>
+    <div class="select-row">
+        <label>區：</label>
+        <select id="districtSelect"></select>
+    </div>
 
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <div class="select-row">
+        <label>街道：</label>
+        <input type="text" id="streetInput" placeholder="例如：五華街 (可留空)">
+    </div>
+
+    <button id="searchBtn">查詢</button>
+    <button id="randomBtn">重新抽選三家餐廳</button>
+
+    <div id="map"></div>
+
+    <h3>抽選結果：</h3>
+    <div id="result"></div>
 <script>
-const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd";
-let searchLock = false;
-const map = L.map('map').setView([23.5, 121], 7);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-let markers = [];
-let lastRestaurants = [];
-const infoDiv = document.getElementById("info");
-
-// 台灣縣市區資料
+// 全台灣縣市 + 行政區完整資料
 const taiwanData = {
-"台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
-"新北市":["板橋區","新莊區","中和區","永和區","土城區","樹林區","鶯歌區","三重區","新店區","淡水區","汐止區","瑞芳區","三峽區","林口區","五股區","八里區","蘆洲區","泰山區","深坑區","石碇區","坪林區","三芝區","石門區","金山區","萬里區","貢寮區","平溪區","雙溪區","烏來區"],
-"桃園市":["桃園區","中壢區","平鎮區","八德區","楊梅區","蘆竹區","大溪區","龍潭區","龜山區","大園區","觀音區","復興區"],
-"台中市":["中區","東區","南區","西區","北區","北屯區","西屯區","南屯區","太平區","大里區","霧峰區","烏日區","豐原區","后里區","石岡區","東勢區","和平區","新社區","潭子區","大雅區","神岡區","大肚區","沙鹿區","龍井區","梧棲區","清水區","大甲區","外埔區","大安區"],
-"台南市":["中西區","東區","南區","北區","安平區","安南區","永康區","歸仁區","新化區","左鎮區","玉井區","楠西區","南化區","仁德區","關廟區","龍崎區","官田區","麻豆區","佳里區","西港區","七股區","將軍區","學甲區","北門區","新營區","後壁區","白河區","東山區","六甲區","下營區","柳營區","鹽水區","善化區","大內區","山上區","新市區","安定區"],
-"高雄市":["新興區","前金區","苓雅區","鹽埕區","鼓山區","旗津區","前鎮區","三民區","楠梓區","小港區","左營區","仁武區","大社區","岡山區","路竹區","阿蓮區","田寮區","燕巢區","橋頭區","梓官區","彌陀區","永安區","湖內區","鳳山區","大寮區","林園區","鳥松區","大樹區","旗山區","美濃區","六龜區","內門區","杉林區","甲仙區","桃源區","那瑪夏區","茂林區","茄萣區"]
+    "台北市": ["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
+    "新北市": ["萬里區","金山區","板橋區","汐止區","深坑區","石碇區","瑞芳區","平溪區","雙溪區","貢寮區","新店區","坪林區","烏來區","永和區","中和區","土城區","三峽區","樹林區","鶯歌區","三重區","新莊區","泰山區","林口區","蘆洲區","五股區","八里區","淡水區","三芝區","石門區"],
+    "桃園市": ["中壢區","平鎮區","龍潭區","楊梅區","新屋區","觀音區","桃園區","龜山區","八德區","大溪區","復興區","大園區","蘆竹區"],
+    "台中市": ["中區","東區","南區","西區","北區","北屯區","西屯區","南屯區","太平區","大里區","霧峰區","烏日區","豐原區","后里區","石岡區","東勢區","和平區","新社區","潭子區","大雅區","神岡區","大肚區","沙鹿區","龍井區","梧棲區","清水區","大甲區","外埔區","大安區"],
+    "台南市": ["中西區","東區","南區","北區","安平區","安南區","永康區","歸仁區","新化區","左鎮區","玉井區","楠西區","南化區","仁德區","關廟區","龍崎區","官田區","麻豆區","佳里區","西港區","七股區","將軍區","學甲區","北門區","新營區","後壁區","白河區","東山區","六甲區","下營區","柳營區","鹽水區","善化區","大內區","山上區","新市區","安定區"],
+    "高雄市": ["新興區","前金區","苓雅區","鹽埕區","鼓山區","旗津區","前鎮區","三民區","楠梓區","小港區","左營區","仁武區","大社區","岡山區","路竹區","阿蓮區","田寮區","燕巢區","橋頭區","梓官區","彌陀區","永安區","湖內區","鳳山區","大寮區","林園區","鳥松區","大樹區","旗山區","美濃區","六龜區","內門區","杉林區","甲仙區","桃源區","那瑪夏區","茂林區","茄萣區"],
+    "基隆市": ["仁愛區","中正區","信義區","中山區","安樂區","暖暖區","七堵區"],
+    "新竹市": ["東區","北區","香山區"],
+    "嘉義市": ["東區","西區"],
+    "新竹縣": ["竹北市","湖口鄉","新豐鄉","新埔鎮","關西鎮","芎林鄉","寶山鄉","竹東鎮","五峰鄉","橫山鄉","尖石鄉","北埔鄉","峨眉鄉"],
+    "苗栗縣": ["苗栗市","苑裡鎮","通霄鎮","竹南鎮","頭份市","後龍鎮","卓蘭鎮","大湖鄉","公館鄉","銅鑼鄉","南庄鄉","頭屋鄉","三義鄉","西湖鄉","造橋鄉","三灣鄉","獅潭鄉","泰安鄉"],
+    "彰化縣": ["彰化市","芬園鄉","花壇鄉","秀水鄉","鹿港鎮","福興鄉","線西鄉","和美鎮","伸港鄉","員林市","社頭鄉","永靖鄉","埔心鄉","溪湖鎮","大村鄉","埔鹽鄉","田中鎮","北斗鎮","田尾鄉","埤頭鄉","溪州鄉","竹塘鄉","二林鎮","大城鄉","芳苑鄉","二水鄉"],
+    "南投縣": ["南投市","中寮鄉","草屯鎮","國姓鄉","埔里鎮","仁愛鄉","名間鄉","集集鎮","水里鄉","魚池鄉","信義鄉","竹山鎮","鹿谷鄉"],
+    "雲林縣": ["斗六市","斗南鎮","虎尾鎮","西螺鎮","土庫鎮","北港鎮","古坑鄉","大埤鄉","莿桐鄉","林內鄉","二崙鄉","崙背鄉","麥寮鄉","東勢鄉","褒忠鄉","臺西鄉","元長鄉","四湖鄉","口湖鄉","水林鄉"],
+    "嘉義縣": ["太保市","朴子市","布袋鎮","大林鎮","民雄鄉","溪口鄉","新港鄉","六腳鄉","東石鄉","義竹鄉","鹿草鄉","水上鄉","中埔鄉","竹崎鄉","梅山鄉","番路鄉","大埔鄉","阿里山鄉"],
+    "屏東縣": ["屏東市","潮州鎮","東港鎮","恆春鎮","萬丹鄉","長治鄉","麟洛鄉","九如鄉","里港鄉","鹽埔鄉","高樹鄉","萬巒鄉","內埔鄉","竹田鄉","新埤鄉","枋寮鄉","新園鄉","崁頂鄉","林邊鄉","南州鄉","佳冬鄉","琉球鄉","車城鄉","滿州鄉","枋山鄉","三地門鄉","霧台鄉","瑪家鄉","泰武鄉","來義鄉","春日鄉","獅子鄉","牡丹鄉"],
+    "宜蘭縣": ["宜蘭市","頭城鎮","礁溪鄉","壯圍鄉","員山鄉","羅東鎮","三星鄉","大同鄉","五結鄉","冬山鄉","蘇澳鎮","南澳鄉"],
+    "花蓮縣": ["花蓮市","新城鄉","秀林鄉","吉安鄉","壽豐鄉","鳳林鎮","光復鄉","豐濱鄉","瑞穗鄉","萬榮鄉","玉里鎮","富里鄉","卓溪鄉"],
+    "台東縣": ["台東市","成功鎮","關山鎮","卑南鄉","鹿野鄉","池上鄉","東河鄉","長濱鄉","太麻里鄉","金峰鄉","大武鄉","達仁鄉","綠島鄉","蘭嶼鄉","延平鄉","海端鄉"],
+    "澎湖縣": ["馬公市","湖西鄉","白沙鄉","西嶼鄉","望安鄉","七美鄉"],
+    "金門縣": ["金城鎮","金湖鎮","金沙鎮","金寧鄉","烈嶼鄉","烏坵鄉"],
+    "連江縣": ["南竿鄉","北竿鄉","莒光鄉","東引鄉"]
 };
+</script>
+<script>
+// Leaflet 地圖初始化
+let map = L.map("map").setView([25.046, 121.517], 13);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+let marker;
 
 // 初始化縣市下拉選單
 const citySelect = document.getElementById("citySelect");
 const districtSelect = document.getElementById("districtSelect");
-for (const city in taiwanData){
+const streetInput = document.getElementById("streetInput");
+const resultDiv = document.getElementById("result");
+
+// 填入縣市
+Object.keys(taiwanData).forEach(city => {
     const opt = document.createElement("option");
     opt.value = city;
     opt.textContent = city;
     citySelect.appendChild(opt);
-}
-updateDistricts();
+});
 
-function updateDistricts(){
-    const city = citySelect.value;
+// 縣市變動 → 更新區域
+citySelect.addEventListener("change", () => {
     districtSelect.innerHTML = "";
-    taiwanData[city].forEach(d => {
+    const districts = taiwanData[citySelect.value];
+    districts.forEach(d => {
         const opt = document.createElement("option");
         opt.value = d;
         opt.textContent = d;
         districtSelect.appendChild(opt);
     });
-}
+});
+citySelect.dispatchEvent(new Event("change"));
 
-// ================== 搜尋地址 ==================
-function searchAddress(){
-    if(searchLock) return;
-    searchLock = true;
-    setTimeout(()=>{ searchLock = false; }, 2000);
 
-    const city = citySelect.value;
-    const district = districtSelect.value;
-    const street = document.getElementById("streetInput").value.trim();
+// 🔍 同時查 LocationIQ + Nominatim
+async function geocodeAddress(city, district, street) {
+    const query = `${city}${district}${street ? street : ""}`;
 
-    let query = city + " " + district;
-    let radius = 5000;
-    if(street){
-        query += " " + street;
-        radius = 1000;
-        infoDiv.innerText = `目前搜尋範圍：${city} ${district} ${street} 附近 1 公里`;
-    } else {
-        infoDiv.innerText = `目前搜尋範圍：${city} ${district} 全區隨機三家餐廳`;
-    }
+    const urls = [
+        `https://us1.locationiq.com/v1/search?key=pk.9158c5d5f430a695c0551fb9be095eae&q=${encodeURIComponent(query)}&format=json`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`
+    ];
 
-    fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(query)}&format=json&countrycodes=TW`)
-    .then(res=>res.json())
-    .then(data=>{
-        if(data && data.length>0){
-            const lat = parseFloat(data[0].lat);
-            const lon = parseFloat(data[0].lon);
-            map.setView([lat, lon], 15);
-            findRestaurants(lat, lon, radius);
-        } else {
-            fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=TW`)
-            .then(res=>res.json())
-            .then(data2=>{
-                if(data2 && data2.length>0){
-                    const lat = parseFloat(data2[0].lat);
-                    const lon = parseFloat(data2[0].lon);
-                    map.setView([lat, lon], 15);
-                    findRestaurants(lat, lon, radius);
-                } else {
-                    alert("找不到符合地址，請確認縣市、區及街道名稱");
-                }
-            });
+    let best = null;
+
+    for (let url of urls) {
+        try {
+            const r = await fetch(url);
+            const data = await r.json();
+            if (data && data.length > 0) {
+                best = {
+                    lat: parseFloat(data[0].lat),
+                    lon: parseFloat(data[0].lon)
+                };
+                break;
+            }
+        } catch (e) {
+            console.log("Geocoder error:", e);
         }
-    })
-    .catch(err=>{ console.error(err); alert("查詢地址時發生錯誤"); });
+    }
+    return best;
 }
 
-// ================== 查餐廳 ==================
-function findRestaurants(lat, lon, radius){
-    const overpassUrl = `https://overpass-api.de/api/interpreter?data=[out:json];(
-        node["amenity"="restaurant"](around:${radius},${lat},${lon});
-        way["amenity"="restaurant"](around:${radius},${lat},${lon});
-        relation["amenity"="restaurant"](around:${radius},${lat},${lon});
-    );out center tags;`;
 
-    fetch(overpassUrl)
-    .then(res=>res.json())
-    .then(data=>{
-        markers.forEach(m=>map.removeLayer(m));
-        markers=[];
-        lastRestaurants=[];
-        let elements = data.elements || [];
-        elements = elements.filter(e=>{ const t=e.tags||{}; return !(t.disused||t.abandoned||t["disused:amenity"]||t.shop==="vacant"); });
-        if(elements.length===0){ alert("附近沒有找到餐廳"); return; }
-        lastRestaurants = elements;
-        displayRestaurantCards();
-        document.getElementById("reshuffleBtn").style.display="inline-block";
-    })
-    .catch(err=>{ console.error(err); alert("查詢餐廳時發生錯誤"); });
+// 🔍 查附近 1 公里隨機三間餐廳
+async function searchRestaurants(lat, lon) {
+    const query = `
+        [out:json];
+        (
+            node["amenity"="restaurant"](around:1000,${lat},${lon});
+            way["amenity"="restaurant"](around:1000,${lat},${lon});
+            relation["amenity"="restaurant"](around:1000,${lat},${lon});
+        );
+        out center tags;
+    `;
+
+    const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+    return data.elements;
 }
 
-// ================== 顯示餐廳卡片 ==================
-function displayRestaurantCards(){
-    markers.forEach(m=>map.removeLayer(m));
-    markers=[];
-    const cardsDiv = document.getElementById("cards");
-    cardsDiv.innerHTML="";
-    const shuffled = lastRestaurants.sort(()=>0.5-Math.random());
-    const selected = shuffled.slice(0,3);
-    selected.forEach(r=>{
+
+// 👉 建立店家卡片（可點 → 自動開 Google Map + 店家資訊）
+function drawCards(restaurants) {
+    resultDiv.innerHTML = "";
+
+    restaurants.slice(0, 3).forEach(r => {
+        const name = r.tags.name || "未提供名稱";
+        const addr = r.tags["addr:full"] || r.tags["addr:street"] || "地址未提供";
+
         const lat = r.lat || r.center?.lat;
         const lon = r.lon || r.center?.lon;
-        const name = r.tags.name || "未提供名稱";
-        const hours = r.tags.opening_hours || "未提供營業時間";
-        const addr = r.tags["addr:full"] || r.tags["addr:street"] || "";
-
-        const marker = L.marker([lat, lon],{icon:L.icon({iconUrl:"https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=restaurant|ff0000",iconSize:[32,32]})}).addTo(map);
-        markers.push(marker);
-        marker.bindPopup(`<b>${name}</b><br>${addr}<br>營業時間：${hours}`);
 
         const card = document.createElement("div");
-        card.className="card";
-        card.innerHTML=`<b>${name}</b><br>營業時間：${hours}`;
-        card.onclick=()=>{ map.setView([lat, lon],17); marker.openPopup(); window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat+","+lon)}`,"_blank"); };
-        cardsDiv.appendChild(card);
+        card.className = "restaurant-card";
+        card.innerHTML = `<b>${name}</b><br>${addr}`;
+
+        card.addEventListener("click", () => {
+            const gmap = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=&query=${lat},${lon}`;
+            window.open(gmap, "_blank");
+        });
+
+        resultDiv.appendChild(card);
     });
 }
 
-// ================== 重新抽選 ==================
-function reshuffleRestaurants(){
-    if(!lastRestaurants.length){ alert("尚未查詢到餐廳"); return; }
-    displayRestaurantCards();
-}
+
+// 🔘 查詢按鈕
+document.getElementById("searchBtn").addEventListener("click", async () => {
+    const city = citySelect.value;
+    const district = districtSelect.value;
+    const street = streetInput.value.trim();
+
+    const geo = await geocodeAddress(city, district, street);
+
+    if (!geo) {
+        alert("找不到該地址");
+        return;
+    }
+
+    if (marker) map.removeLayer(marker);
+    marker = L.marker([geo.lat, geo.lon]).addTo(map);
+    map.setView([geo.lat, geo.lon], 16);
+
+    const restaurants = await searchRestaurants(geo.lat, geo.lon);
+    restaurants.sort(() => Math.random() - 0.5);
+    drawCards(restaurants);
+});
+
+
+// 🔘 重新抽選三家餐廳
+document.getElementById("randomBtn").addEventListener("click", async () => {
+    map.setView(map.getCenter(), map.getZoom());
+    const c = map.getCenter();
+
+    const restaurants = await searchRestaurants(c.lat, c.lng);
+    restaurants.sort(() => Math.random() - 0.5);
+    drawCards(restaurants);
+});
 </script>
+
 </body>
 </html>
