@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>台灣餐廳隨機推薦器</title>
 
-<!-- Leaflet CSS -->
+<!-- Leaflet CSS (必須在地圖建立前載入) -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
 <style>
@@ -72,7 +72,7 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
   <div class="app">
     <div class="header">
       <h1>台灣餐廳隨機推薦器</h1>
-      <div class="small">LocationIQ (Autocomplete & Geocoding) + Nominatim (Fallback) • Overpass (餐廳資料)</div>
+      <div class="small">LocationIQ (Geocoding) + Nominatim (Fallback) • Overpass (餐廳資料)</div>
     </div>
 
     <div class="controls panel">
@@ -87,8 +87,7 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
         </div>
         <div class="col" style="min-width:220px">
           <label for="streetInput">街道（可選，留空代表整個區）</label>
-          <input id="streetInput" placeholder="例如：五華街" autocomplete="off" />
-          <div id="autocompleteList" style="position:absolute;background:#fff;border:1px solid #ccc;z-index:9999;max-height:180px;overflow:auto;display:none;"></div>
+          <input id="streetInput" placeholder="例如：五華街" />
         </div>
       </div>
 
@@ -112,7 +111,7 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
     </div>
 
     <div class="footer panel">
-      <div>想要更精準可加入「店家類型過濾」、「使用者定位」等功能，告訴我即可擴充。</div>
+      <div>想要更精準可加入「店家類型過濾」、「自動補全街道」、「使用者定位」等功能，告訴我即可擴充。</div>
     </div>
   </div>
 
@@ -124,14 +123,14 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
     </div>
   </div>
 
-  <!-- Leaflet JS -->
+  <!-- Leaflet JS (必須在使用 L 之前載入) -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <script>
   /****************************************************************
-   * 設定（請填入你的 LocationIQ key）
+   * 設定（把 API_KEY 改成你的 LocationIQ key）
    ****************************************************************/
-  const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd";
+  const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd"; // <-- 你的 key
   const LOCATIONIQ_RETRY = 2;
   const NOMINATIM_RETRY = 2;
   const OVERPASS_RETRY = 3;
@@ -142,7 +141,7 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
   ];
 
   /****************************************************************
-   * 全台縣市區
+   * 全台縣市與區（完整）
    ****************************************************************/
   const taiwanData = {
     "台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
@@ -170,7 +169,7 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
   };
 
   /****************************************************************
-   * UI 元件
+   * UI 元件參考
    ****************************************************************/
   const citySelect = document.getElementById("citySelect");
   const districtSelect = document.getElementById("districtSelect");
@@ -180,208 +179,335 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
   const cardsDiv = document.getElementById("cards");
   const loadingEl = document.getElementById("loading");
   const infoEl = document.getElementById("info");
-  const autocompleteList = document.getElementById("autocompleteList");
 
-  // 初始化縣市/區下拉
+  /****************************************************************
+   * 初始化縣市 / 區下拉
+   ****************************************************************/
   (function initCityDistrict(){
     Object.keys(taiwanData).forEach(city=>{
-      const o=document.createElement("option");o.value=city;o.textContent=city;
+      const o = document.createElement("option"); o.value = city; o.textContent = city;
       citySelect.appendChild(o);
     });
-    citySelect.addEventListener("change",()=>{
-      const city=citySelect.value;
-      districtSelect.innerHTML="";
-      (taiwanData[city]||[]).forEach(d=>{
-        const o=document.createElement("option");o.value=d;o.textContent=d;
+    // 觸發第一次 district 填入
+    citySelect.addEventListener("change", ()=>{
+      const city = citySelect.value;
+      districtSelect.innerHTML = "";
+      (taiwanData[city] || []).forEach(d => {
+        const o = document.createElement("option"); o.value = d; o.textContent = d;
         districtSelect.appendChild(o);
       });
     });
-    citySelect.selectedIndex=0;
+    // 預設選第一個
+    citySelect.selectedIndex = 0;
     citySelect.dispatchEvent(new Event("change"));
   })();
 
   /****************************************************************
-   * Leaflet 地圖初始化
+   * Leaflet 地圖初始化（在 Leaflet script 後執行，已確保 L 已定義）
    ****************************************************************/
-  const map=L.map("map").setView([25.033964,121.564468],13);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
-  let markers=[];
-  function clearMarkers(){markers.forEach(m=>map.removeLayer(m));markers=[];}
+  const map = L.map("map", { zoomControl:true }).setView([25.033964,121.564468], 13);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom:19, attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  let currentMarkers = [];
+  let lastRestaurants = []; // 保留最近一次 Overpass 的元素，重新抽選用
 
   /****************************************************************
-   * Helper: 顯示 loading
+   * Utils: show/hide loading
    ****************************************************************/
-  function showLoading(show){
-    loadingEl.style.display=show?"flex":"none";
+  function showLoading(){ loadingEl.style.display = "flex"; }
+  function hideLoading(){ loadingEl.style.display = "none"; }
+
+  /****************************************************************
+   * Utils: disable controls during operations (防呆)
+   ****************************************************************/
+  function setBusy(val){
+    searchBtn.disabled = val;
+    reshuffleBtn.disabled = val || lastRestaurants.length===0;
+    citySelect.disabled = val;
+    districtSelect.disabled = val;
+    streetInput.disabled = val;
   }
 
   /****************************************************************
-   * Helper: LocationIQ Autocomplete
+   * Helper: fetch with timeout and retries
    ****************************************************************/
-  async function fetchLocationIQAutocomplete(query){
-    const url=`https://us1.locationiq.com/v1/autocomplete.php?key=${API_KEY}&q=${encodeURIComponent(query)}&countrycodes=TW&format=json&limit=5`;
-    const res=await fetch(url);
-    if(!res.ok) throw new Error("LocationIQ Autocomplete 失敗");
-    return await res.json();
-  }
-
-  streetInput.addEventListener("input",async e=>{
-    const val=e.target.value.trim();
-    if(!val){autocompleteList.style.display="none";return;}
+  async function fetchWithTimeout(url, opts={}, timeout=10000){
+    const controller = new AbortController();
+    const id = setTimeout(()=>controller.abort(), timeout);
     try{
-      const data=await fetchLocationIQAutocomplete(val);
-      autocompleteList.innerHTML="";
-      data.forEach(item=>{
-        const div=document.createElement("div");
-        div.textContent=item.display_name;
-        div.style.padding="6px";div.style.cursor="pointer";
-        div.addEventListener("click",()=>{streetInput.value=item.display_name;autocompleteList.style.display="none";});
-        autocompleteList.appendChild(div);
-      });
-      autocompleteList.style.display="block";
-    }catch(err){
-      autocompleteList.style.display="none";
+      const response = await fetch(url, { signal: controller.signal, ...opts });
+      clearTimeout(id);
+      return response;
+    }catch(e){
+      clearTimeout(id);
+      throw e;
     }
-  });
-
-  document.addEventListener("click",e=>{
-    if(!streetInput.contains(e.target) && !autocompleteList.contains(e.target)){
-      autocompleteList.style.display="none";
-    }
-  });
+  }
 
   /****************************************************************
-   * Overpass 查詢
+   * Geocoding: first try LocationIQ, then fallback Nominatim.
+   * Both have retry loops.
    ****************************************************************/
-  async function fetchOverpass(query){
-    for(let i=0;i<OVERPASS_SERVERS.length;i++){
-      for(let r=0;r<OVERPASS_RETRY;r++){
-        try{
-          const url=OVERPASS_SERVERS[i];
-          const res=await fetch(url,{method:"POST",body:query});
-          if(!res.ok) continue;
-          const data=await res.json();
-          return data.elements||[];
-        }catch(e){}
+  async function geocode(query){
+    // try LocationIQ
+    for(let attempt=0; attempt<=LOCATIONIQ_RETRY; attempt++){
+      try{
+        const url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(query)}&format=json&countrycodes=TW&limit=3`;
+        const r = await fetchWithTimeout(url, {}, 8000);
+        if(!r.ok) throw new Error('LocationIQ bad response');
+        const j = await r.json();
+        if(Array.isArray(j) && j.length>0){
+          // return first
+          return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), source:'locationiq', raw:j[0] };
+        }
+      }catch(e){
+        // continue to retry
+        if(attempt === LOCATIONIQ_RETRY){
+          console.warn("LocationIQ failed:", e);
+        } else {
+          await new Promise(res=>setTimeout(res, 400 * (attempt+1)));
+        }
       }
     }
-    throw new Error("Overpass 查詢失敗");
+
+    // fallback to Nominatim
+    for(let attempt=0; attempt<=NOMINATIM_RETRY; attempt++){
+      try{
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=TW&limit=3&q=${encodeURIComponent(query)}`;
+        const r = await fetchWithTimeout(url, { headers: { "Accept": "application/json" } }, 8000);
+        if(!r.ok) throw new Error('Nominatim bad response');
+        const j = await r.json();
+        if(Array.isArray(j) && j.length>0){
+          return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), source:'nominatim', raw:j[0] };
+        }
+      }catch(e){
+        if(attempt === NOMINATIM_RETRY){
+          console.warn("Nominatim failed:", e);
+        } else {
+          await new Promise(res=>setTimeout(res, 400 * (attempt+1)));
+        }
+      }
+    }
+
+    return null;
   }
 
-  function buildOverpassQuery(lat1,lon1,lat2,lon2){
-    return `
-[out:json][timeout:25];
+  /****************************************************************
+   * Overpass query with multi-endpoint fallback and retries
+   * We POST the query (safer for long queries) and check text for HTML
+   ****************************************************************/
+  async function overpassQuery(query){
+    let lastErr = null;
+    for(const endpoint of OVERPASS_SERVERS){
+      for(let attempt=0; attempt<OVERPASS_RETRY; attempt++){
+        try{
+          // Use POST
+          const r = await fetchWithTimeout(endpoint, {
+            method:'POST',
+            headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+            body: query
+          }, 15000);
+          // If not ok, try next attempt/endpoint
+          if(!r.ok){
+            lastErr = new Error(`Overpass ${endpoint} status ${r.status}`);
+            await new Promise(res=>setTimeout(res, 500*(attempt+1)));
+            continue;
+          }
+          const txt = await r.text();
+          // Overpass may return HTML error page - ignore those
+          if(typeof txt === 'string' && txt.trim().startsWith('<')){
+            lastErr = new Error('Overpass returned HTML error');
+            await new Promise(res=>setTimeout(res, 300*(attempt+1)));
+            continue;
+          }
+          // parse JSON
+          const j = JSON.parse(txt);
+          return j;
+        }catch(e){
+          lastErr = e;
+          await new Promise(res=>setTimeout(res, 300*(attempt+1)));
+        }
+      }
+    }
+    throw lastErr || new Error('All overpass failed');
+  }
+
+  /****************************************************************
+   * findRestaurants: wrapper that builds Overpass query and fetches
+   ****************************************************************/
+  async function findRestaurants(lat, lon, radius=1000){
+    // Build Overpass query (out center tags)
+    const q = `[out:json];
 (
-  node["amenity"="restaurant"](${lat1},${lon1},${lat2},${lon2});
-  way["amenity"="restaurant"](${lat1},${lon1},${lat2},${lon2});
-  relation["amenity"="restaurant"](${lat1},${lon1},${lat2},${lon2});
+  node["amenity"="restaurant"](around:${radius},${lat},${lon});
+  way["amenity"="restaurant"](around:${radius},${lat},${lon});
+  relation["amenity"="restaurant"](around:${radius},${lat},${lon});
 );
-out center;
-`;
+out center tags;`;
+
+    const data = await overpassQuery(q);
+    const elements = data.elements || [];
+    // filter disused/vacant
+    const filtered = elements.filter(e=>{
+      const t = e.tags || {};
+      if(t.disused || t.abandoned || t["disused:amenity"]) return false;
+      if(t.shop === "vacant") return false;
+      return true;
+    });
+    return filtered;
   }
 
-  function shuffleArray(a){return a.sort(()=>Math.random()-0.5);}
+  /****************************************************************
+   * Render: clear markers & add markers for selected restaurants,
+   * build cards with name/address/hours and actions:
+   * - open Google Maps search (name + address)
+   * - optionally show phone if available in tags
+   ****************************************************************/
+  function clearMarkers(){
+    currentMarkers.forEach(m => map.removeLayer(m));
+    currentMarkers = [];
+  }
 
-  function showCards(restaurants){
-    cardsDiv.innerHTML="";
-    restaurants.forEach(r=>{
-      const div=document.createElement("div");
-      div.className="card";
-      const left=document.createElement("div");
-      left.className="card-left";
-      left.innerHTML=`<div class="card-title">${r.tags.name||"未知餐廳"}</div>
-        <div class="card-sub">${r.tags.cuisine?r.tags.cuisine.replace(/;/g,", "):""}</div>
-        <div class="card-sub">${r.tags.address||""}</div>`;
-      const actions=document.createElement("div");
-      actions.className="card-actions";
-      const navBtn=document.createElement("button");
-      navBtn.textContent="Google Maps";
-      navBtn.onclick=()=>window.open(`https://www.google.com/maps/search/?api=1&query=${r.lat||r.center.lat},${r.lon||r.center.lon}`,"_blank");
-      actions.appendChild(navBtn);
-      div.appendChild(left);div.appendChild(actions);
-      cardsDiv.appendChild(div);
+  function renderResults(restaurants){
+    clearMarkers();
+    cardsDiv.innerHTML = "";
+
+    if(!restaurants || restaurants.length===0){
+      cardsDiv.innerHTML = `<div class="small">找不到符合的餐廳。</div>`;
+      return;
+    }
+
+    // randomly pick up to 3
+    const shuffled = restaurants.slice().sort(()=>Math.random()-0.5);
+    const selected = shuffled.slice(0,3);
+
+    selected.forEach(item=>{
+      const lat = item.lat || item.center?.lat;
+      const lon = item.lon || item.center?.lon;
+      const tags = item.tags || {};
+      const name = tags.name || '未提供名稱';
+      const address = (tags["addr:full"] || tags["addr:street"] || tags["addr:housenumber"] || '') .toString();
+      const hours = tags.opening_hours || '';
+      const phone = tags.phone || tags["contact:phone"] || '';
+
+      // marker
+      const marker = L.marker([lat, lon], {
+        icon: L.icon({
+          iconUrl: "https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=restaurant|ff0000",
+          iconSize:[32,32]
+        })
+      }).addTo(map);
+      marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：' + hours : ''}${phone ? '<br>電話：' + phone : ''}`);
+      currentMarkers.push(marker);
+
+      // card
+      const card = document.createElement('div');
+      card.className = 'card';
+      const left = document.createElement('div'); left.className='card-left';
+      const right = document.createElement('div'); right.className='card-actions';
+
+      left.innerHTML = `<div class="card-title">${name}</div><div class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</div><div class="card-sub">${hours ? '營業時間：' + hours : ''}${phone ? ' • 電話：' + phone : ''}</div>`;
+
+      // actions: view on map (open popup + pan), google maps, navigate
+      const btnView = document.createElement('button'); btnView.textContent = '顯示在地圖';
+      btnView.style.background = '#0ea5a0'; btnView.style.padding='8px 10px';
+      btnView.onclick = ()=>{ map.setView([lat,lon],17); marker.openPopup(); };
+
+      const mapsQuery = encodeURIComponent(name + (address ? ' ' + address : ''));
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+
+      const btnMaps = document.createElement('button'); btnMaps.textContent = '在 Google Maps 開啟';
+      btnMaps.style.background = '#1f6feb'; btnMaps.onclick = ()=>{ window.open(mapsUrl,'_blank'); };
+
+      const navigateUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat + ',' + lon)}&travelmode=driving`;
+      const btnNav = document.createElement('button'); btnNav.textContent = '導航';
+      btnNav.style.background = '#ef6f6c'; btnNav.onclick = ()=>{ window.open(navigateUrl,'_blank'); };
+
+      right.appendChild(btnView);
+      right.appendChild(btnMaps);
+      right.appendChild(btnNav);
+
+      card.appendChild(left);
+      card.appendChild(right);
+
+      cardsDiv.appendChild(card);
     });
   }
 
   /****************************************************************
-   * 主流程
+   * 主流程：按下搜尋 → 組 query → geocode → find restaurants → render
    ****************************************************************/
-  searchBtn.addEventListener("click",async ()=>{
-    const city=citySelect.value;
-    const district=districtSelect.value;
-    const street=streetInput.value.trim();
-    showLoading(true);infoEl.textContent="查詢中…";
-    clearMarkers();
+  async function doSearch(){
+    // 防呆：禁止快速重複點擊
+    if(searchBtn.disabled) return;
+
+    const city = citySelect.value;
+    const district = districtSelect.value;
+    const street = streetInput.value.trim();
+
+    if(!city || !district){ alert('請選擇縣市與區'); return; }
+
+    // UI lock + loading
+    setBusy(true); showLoading();
+    infoEl.textContent = street ? `搜尋：${city} ${district} ${street} 附近 1 公里` : `搜尋：${city} ${district} 全區隨機三家`;
     try{
-      // 使用 LocationIQ geocoding
-      let coords=null;
-      let attempts=0;
-      while(attempts<LOCATIONIQ_RETRY){
-        try{
-          const res=await fetch(`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent([street,district,city].filter(Boolean).join(","))}&format=json&countrycodes=TW&limit=1`);
-          const data=await res.json();
-          if(data && data.length>0){coords=data[0];break;}
-        }catch(e){}
-        attempts++;
+      const query = `${city} ${district}${street ? ' ' + street : ''}`;
+
+      // geocode
+      const geo = await geocode(query);
+      if(!geo){ throw new Error('找不到該地址（geocode 失敗）'); }
+      const lat = geo.lat, lon = geo.lon;
+      map.setView([lat, lon], street ? 15 : 13);
+
+      // radius: 若有街道就 1km，沒輸入街道就 5000m（區域範圍）
+      const radius = street ? 1000 : 5000;
+
+      // find restaurants (with overpass fallback)
+      const restaurants = await findRestaurants(lat, lon, radius);
+
+      if(!restaurants || restaurants.length === 0){
+        alert('附近沒有找到餐廳。');
+        lastRestaurants = [];
+        renderResults([]);
+      } else {
+        lastRestaurants = restaurants;
+        renderResults(restaurants);
       }
 
-      // fallback Nominatim
-      attempts=0;
-      while(!coords && attempts<NOMINATIM_RETRY){
-        try{
-          const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent([street,district,city].filter(Boolean).join(","))}&countrycodes=TW&limit=1`);
-          const data=await res.json();
-          if(data && data.length>0){coords=data[0];break;}
-        }catch(e){}
-        attempts++;
-      }
-
-      if(!coords) throw new Error("找不到該地址座標");
-
-      const lat=parseFloat(coords.lat);
-      const lon=parseFloat(coords.lon);
-      map.setView([lat,lon],15);
-
-      // Overpass 查詢
-      const delta=0.01;
-      const overpassQuery=buildOverpassQuery(lat-delta,lon-delta,lat+delta,lon+delta);
-      let restaurants=await fetchOverpass(overpassQuery);
-      if(restaurants.length===0)throw new Error("附近沒有餐廳資料");
-
-      // 顯示 marker
-      restaurants.slice(0,20).forEach(r=>{
-        const m=L.marker([r.lat||r.center.lat,r.lon||r.center.lon]).addTo(map);
-        m.bindPopup(`<b>${r.tags.name||"未知餐廳"}</b><br>${r.tags.cuisine?r.tags.cuisine.replace(/;/g,", "):""}`);
-        markers.push(m);
-      });
-
-      // 抽選前三
-      restaurants=shuffleArray(restaurants);
-      const selected=restaurants.slice(0,3);
-      showCards(selected);
-      reshuffleBtn.disabled=false;
-      infoEl.textContent=`共找到 ${restaurants.length} 間餐廳，已抽選 3 間`;
+      // enable reshuffle button if we have results
+      reshuffleBtn.disabled = !(lastRestaurants && lastRestaurants.length>0);
     }catch(err){
-      infoEl.textContent=err.message;
+      console.error('Search error:', err);
+      alert('查詢失敗：' + (err.message || err));
+    } finally {
+      hideLoading(); setBusy(false);
     }
-    showLoading(false);
-  });
+  }
 
-  reshuffleBtn.addEventListener("click",async ()=>{
-    const cards=Array.from(cardsDiv.children);
-    if(cards.length===0) return;
-    const newRestaurants=shuffleArray(cards.map(c=>({
-      tags:{
-        name:c.querySelector(".card-title").textContent,
-        cuisine:c.querySelectorAll(".card-sub")[0]?.textContent,
-        address:c.querySelectorAll(".card-sub")[1]?.textContent
-      },
-      lat:parseFloat(c.querySelector("button").onclick.toString().match(/query=([0-9\.-]+),([0-9\.-]+)/)[1]),
-      lon:parseFloat(c.querySelector("button").onclick.toString().match(/query=([0-9\.-]+),([0-9\.-]+)/)[2])
-    })));
-    showCards(newRestaurants.slice(0,3));
-  });
+  /****************************************************************
+   * 重抽（只使用 lastRestaurants，不重新呼叫 Overpass）
+   ****************************************************************/
+  function reshuffle(){
+    if(reshuffleBtn.disabled) return;
+    if(!lastRestaurants || lastRestaurants.length===0){ alert('尚未取得餐廳資料，請先搜尋'); return; }
+    // 隨機抽三家並顯示（不需要再次 Overpass）
+    renderResults(lastRestaurants);
+  }
 
+  /****************************************************************
+   * Event 綁定
+   ****************************************************************/
+  searchBtn.addEventListener('click', doSearch);
+  reshuffleBtn.addEventListener('click', reshuffle);
+
+  /****************************************************************
+   *  Expose some utility for debugging (optional)
+   ****************************************************************/
+  window._rr = {
+    geocode, overpassQuery, findRestaurants, lastRestaurants
+  };
   </script>
 </body>
 </html>
