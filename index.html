@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>台灣餐廳隨機推薦器</title>
 
-<!-- Leaflet CSS (必須在地圖建立前載入) -->
+<!-- Leaflet CSS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
 <style>
@@ -17,14 +17,12 @@
 }
 html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans TC","Helvetica Neue",Arial;}
 body{display:flex;flex-direction:column;background:var(--bg);color:#111;}
-.app{
-  max-width:1100px;margin:12px auto;display:grid;grid-template-columns:1fr;gap:12px;padding:12px;
-}
+.app{max-width:1100px;margin:12px auto;display:grid;grid-template-columns:1fr;gap:12px;padding:12px;}
 .header{display:flex;align-items:center;justify-content:space-between;gap:12px;}
 h1{font-size:20px;margin:0;}
 .controls{
   background:#fff;padding:12px;border-radius:10px;box-shadow:0 6px 18px rgba(15,23,42,0.06);
-  display:flex;flex-direction:column;gap:8px;
+  display:flex;flex-direction:column;gap:8px;position:relative;
 }
 .row{display:flex;gap:8px;flex-wrap:wrap;}
 .col{flex:1;min-width:160px;}
@@ -37,7 +35,7 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
   display:grid;grid-template-columns:1fr 360px;gap:12px;
 }
 @media(max-width:900px){
-  .map-card{grid-template-columns:1fr; }
+  .map-card{grid-template-columns:1fr;}
 }
 
 #map{height:520px;border-radius:10px;overflow:hidden;box-shadow:0 6px 18px rgba(15,23,42,0.06);background:#e8eef8}
@@ -63,10 +61,29 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
 }
 @keyframes spin{to{transform:rotate(360deg);}}
 
-
 .note{font-size:13px;color:var(--muted);margin-top:8px;}
 .footer{font-size:13px;color:var(--muted);text-align:center;margin-top:6px;}
 .link{color:var(--accent);text-decoration:none;font-weight:600;}
+
+/* 街道自動補全樣式 */
+#streetSuggestions{
+  position:absolute;
+  background:#fff;
+  border:1px solid #ccc;
+  border-radius:6px;
+  max-height:150px;
+  overflow-y:auto;
+  z-index:1000;
+  width:100%;
+  box-sizing:border-box;
+}
+.suggestion-item{
+  padding:6px 10px;
+  cursor:pointer;
+}
+.suggestion-item:hover{
+  background:#e0f7fa;
+}
 </style>
 </head>
 <body>
@@ -86,27 +103,25 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
           <label for="districtSelect">區</label>
           <select id="districtSelect" aria-label="區"></select>
         </div>
-        <div class="col" style="min-width:220px">
+        <div class="col" style="min-width:220px;position:relative">
           <label for="streetInput">街道（可選，留空代表整個區）</label>
-          <input id="streetInput" placeholder="例如：五華街" list="streetSuggestions" />
-          <datalist id="streetSuggestions"></datalist>
+          <input id="streetInput" placeholder="例如：五華街" autocomplete="off" />
+          <div id="streetSuggestions"></div>
         </div>
       </div>
 
       <div class="row">
         <div class="col">
-          <label for="cuisineSelect">餐廳類型過濾</label>
-          <select id="cuisineSelect" aria-label="餐廳類型">
+          <label for="typeSelect">店家類型</label>
+          <select id="typeSelect">
             <option value="">全部</option>
-            <option value="chinese">中式</option>
-            <option value="japanese">日式</option>
-            <option value="western">西式</option>
-            <option value="fast_food">速食</option>
-            <option value="coffee">咖啡/飲料</option>
+            <option value="台式">台式</option>
+            <option value="日式">日式</option>
+            <option value="中式">中式</option>
+            <option value="西式">西式</option>
+            <option value="義式">義式</option>
+            <option value="速食">速食</option>
           </select>
-        </div>
-        <div class="col" style="align-self:flex-end">
-          <button id="locateBtn" style="background:#0ea5a0;">使用者定位</button>
         </div>
       </div>
 
@@ -130,7 +145,7 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
     </div>
 
     <div class="footer panel">
-      <div>想要更精準可加入「店家類型過濾」、「自動補全街道」、「使用者定位」等功能，已經整合完成。</div>
+      <div>想要更精準可加入更多功能，按需定位保護隱私。</div>
     </div>
   </div>
 
@@ -146,10 +161,7 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
   <script>
-  /****************************************************************
-   * 設定（把 API_KEY 改成你的 LocationIQ key）
-   ****************************************************************/
-  const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd"; // <-- 你的 key
+  const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd";
   const LOCATIONIQ_RETRY = 2;
   const NOMINATIM_RETRY = 2;
   const OVERPASS_RETRY = 3;
@@ -159,11 +171,8 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
     "https://overpass.openstreetmap.fr/api/interpreter"
   ];
 
-  /****************************************************************
-   * 全台縣市與區（完整）
-   ****************************************************************/
-  const taiwanData = {
-    "台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
+  // 台灣縣市區
+  const taiwanData = {"台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
     "新北市":["萬里區","金山區","板橋區","汐止區","深坑區","石碇區","瑞芳區","平溪區","雙溪區","貢寮區","新店區","坪林區","烏來區","永和區","中和區","土城區","三峽區","樹林區","鶯歌區","三重區","新莊區","泰山區","林口區","蘆洲區","五股區","八里區","淡水區","三芝區","石門區"],
     "基隆市":["仁愛區","中正區","信義區","中山區","安樂區","暖暖區","七堵區"],
     "桃園市":["中壢區","平鎮區","龍潭區","楊梅區","新屋區","觀音區","桃園區","龜山區","八德區","大溪區","復興區","大園區","蘆竹區"],
@@ -184,33 +193,24 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
     "台東縣":["台東市","成功鎮","關山鎮","卑南鄉","鹿野鄉","池上鄉","東河鄉","長濱鄉","太麻里鄉","金峰鄉","大武鄉","達仁鄉","綠島鄉","蘭嶼鄉","延平鄉","海端鄉"],
     "澎湖縣":["馬公市","湖西鄉","白沙鄉","西嶼鄉","望安鄉","七美鄉"],
     "金門縣":["金城鎮","金湖鎮","金沙鎮","金寧鄉","烈嶼鄉","烏坵鄉"],
-    "連江縣":["南竿鄉","北竿鄉","莒光鄉","東引鄉"]
-  };
+    "連江縣":["南竿鄉","北竿鄉","莒光鄉","東引鄉"]};
 
-  /****************************************************************
-   * UI 元件參考
-   ****************************************************************/
   const citySelect = document.getElementById("citySelect");
   const districtSelect = document.getElementById("districtSelect");
   const streetInput = document.getElementById("streetInput");
-  const cuisineSelect = document.getElementById("cuisineSelect");
+  const streetSuggestions = document.getElementById("streetSuggestions");
+  const typeSelect = document.getElementById("typeSelect");
   const searchBtn = document.getElementById("searchBtn");
   const reshuffleBtn = document.getElementById("reshuffleBtn");
-  const locateBtn = document.getElementById("locateBtn");
   const cardsDiv = document.getElementById("cards");
   const loadingEl = document.getElementById("loading");
   const infoEl = document.getElementById("info");
-  const streetSuggestions = document.getElementById("streetSuggestions");
 
-  /****************************************************************
-   * 初始化縣市 / 區下拉
-   ****************************************************************/
   (function initCityDistrict(){
     Object.keys(taiwanData).forEach(city=>{
       const o = document.createElement("option"); o.value = city; o.textContent = city;
       citySelect.appendChild(o);
     });
-    // 觸發第一次 district 填入
     citySelect.addEventListener("change", ()=>{
       const city = citySelect.value;
       districtSelect.innerHTML = "";
@@ -219,36 +219,26 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
         districtSelect.appendChild(o);
       });
     });
-    // 預設選第一個
     citySelect.selectedIndex = 0;
     citySelect.dispatchEvent(new Event("change"));
   })();
 
-  /****************************************************************
-   * Leaflet 地圖初始化
-   ****************************************************************/
   const map = L.map("map", { zoomControl:true }).setView([25.033964,121.564468], 13);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom:19, attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
-
   let currentMarkers = [];
   let lastRestaurants = [];
 
-  /****************************************************************
-   * Utils: show/hide loading
-   ****************************************************************/
   function showLoading(){ loadingEl.style.display = "flex"; }
   function hideLoading(){ loadingEl.style.display = "none"; }
-
   function setBusy(val){
     searchBtn.disabled = val;
     reshuffleBtn.disabled = val || lastRestaurants.length===0;
     citySelect.disabled = val;
     districtSelect.disabled = val;
     streetInput.disabled = val;
-    cuisineSelect.disabled = val;
-    locateBtn.disabled = val;
+    typeSelect.disabled = val;
   }
 
   async function fetchWithTimeout(url, opts={}, timeout=10000){
@@ -288,7 +278,7 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
           return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), source:'nominatim', raw:j[0] };
         }
       }catch(e){
-        if(attempt === NOMINATIM_RETRY){ console.warn("Nominatim failed:", e); } else { await new Promise(res=>setTimeout(res,400*(attempt+1))); }
+        if(attempt === NOMINATIM_RETRY){ console.warn("Nominatim failed:", e); } else { await new Promise(res=>setTimeout(res, 400*(attempt+1))); }
       }
     }
     return null;
@@ -299,125 +289,144 @@ button:disabled{opacity:0.6;cursor:not-allowed;}
     for(const endpoint of OVERPASS_SERVERS){
       for(let attempt=0; attempt<OVERPASS_RETRY; attempt++){
         try{
-          const r = await fetchWithTimeout(endpoint, { method:'POST', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: query },15000);
-          if(!r.ok){ lastErr=new Error(`Overpass ${endpoint} status ${r.status}`); await new Promise(res=>setTimeout(res,500*(attempt+1))); continue; }
+          const r = await fetchWithTimeout(endpoint, {
+            method:'POST',
+            headers:{'Content-Type':'application/x-www-form-urlencoded'},
+            body: query
+          }, 15000);
+          if(!r.ok){ lastErr=new Error(`Overpass ${endpoint} status ${r.status}`); await new Promise(res=>setTimeout(res, 500*(attempt+1))); continue; }
           const txt = await r.text();
-          if(typeof txt==='string' && txt.trim().startsWith('<')){ lastErr=new Error('Overpass returned HTML error'); await new Promise(res=>setTimeout(res,300*(attempt+1))); continue; }
-          return JSON.parse(txt);
-        }catch(e){ lastErr=e; await new Promise(res=>setTimeout(res,300*(attempt+1))); }
+          if(typeof txt==='string' && txt.trim().startsWith('<')){ lastErr=new Error('Overpass returned HTML error'); await new Promise(res=>setTimeout(res, 300*(attempt+1))); continue; }
+          const j = JSON.parse(txt);
+          return j;
+        }catch(e){ lastErr=e; await new Promise(res=>setTimeout(res, 300*(attempt+1))); }
       }
     }
-    throw lastErr||new Error('All overpass failed');
+    throw lastErr || new Error('All overpass failed');
   }
 
-  async function findRestaurants(lat, lon, radius=1000, cuisine=''){
-    let cuisineFilter = cuisine ? `["cuisine"="${cuisine}"]` : '';
-    const q = `[out:json];
-(
-  node["amenity"="restaurant"]${cuisineFilter}(around:${radius},${lat},${lon});
-  way["amenity"="restaurant"]${cuisineFilter}(around:${radius},${lat},${lon});
-  relation["amenity"="restaurant"]${cuisineFilter}(around:${radius},${lat},${lon});
-);
-out center tags;`;
+  async function findRestaurants(lat, lon, radius=1000, type=''){
+    const q = `[out:json];(
+      node["amenity"="restaurant"](around:${radius},${lat},${lon});
+      way["amenity"="restaurant"](around:${radius},${lat},${lon});
+      relation["amenity"="restaurant"](around:${radius},${lat},${lon});
+    );out center tags;`;
     const data = await overpassQuery(q);
-    const elements = data.elements||[];
-    return elements.filter(e=>{
+    let elements = data.elements || [];
+    elements = elements.filter(e=>{
       const t = e.tags||{};
       if(t.disused||t.abandoned||t["disused:amenity"]) return false;
       if(t.shop==='vacant') return false;
+      if(type){
+        if(type==='台式' && !t.cuisine?.includes('taiwan')) return false;
+        if(type==='日式' && !t.cuisine?.includes('japanese')) return false;
+        if(type==='中式' && !t.cuisine?.includes('chinese')) return false;
+        if(type==='西式' && !t.cuisine?.includes('western')) return false;
+        if(type==='義式' && !t.cuisine?.includes('italian')) return false;
+        if(type==='速食' && !t.cuisine?.includes('fast_food')) return false;
+      }
       return true;
     });
+    return elements;
   }
 
   function clearMarkers(){ currentMarkers.forEach(m=>map.removeLayer(m)); currentMarkers=[]; }
 
   function renderResults(restaurants){
-    clearMarkers(); cardsDiv.innerHTML="";
-    if(!restaurants || restaurants.length===0){
-      cardsDiv.innerHTML=`<div class="small">找不到符合的餐廳。</div>`; return;
-    }
-    const shuffled = restaurants.slice().sort(()=>Math.random()-0.5); const selected=shuffled.slice(0,3);
+    clearMarkers(); cardsDiv.innerHTML='';
+    if(!restaurants||restaurants.length===0){ cardsDiv.innerHTML=`<div class="small">找不到符合的餐廳。</div>`; return; }
+    const shuffled=restaurants.slice().sort(()=>Math.random()-0.5); const selected=shuffled.slice(0,3);
     selected.forEach(item=>{
-      const lat=item.lat||item.center?.lat; const lon=item.lon||item.center?.lon; const tags=item.tags||{};
-      const name=tags.name||'未提供名稱'; const address=(tags["addr:full"]||tags["addr:street"]||tags["addr:housenumber"]||'').toString();
+      const lat=item.lat||item.center?.lat;
+      const lon=item.lon||item.center?.lon;
+      const tags=item.tags||{};
+      const name=tags.name||'未提供名稱';
+      const address=(tags["addr:full"]||tags["addr:street"]||tags["addr:housenumber"]||'').toString();
       const hours=tags.opening_hours||''; const phone=tags.phone||tags["contact:phone"]||'';
-      const marker=L.marker([lat,lon]).addTo(map);
-      marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}`);
+
+      const marker = L.marker([lat, lon], {icon:L.icon({iconUrl:"https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=restaurant|ff0000",iconSize:[32,32]})}).addTo(map);
+      marker.bindPopup(`<b>${name}</b><br>${address||''}<br>${hours?'營業時間：'+hours:''}${phone?'<br>電話：'+phone:''}`);
       currentMarkers.push(marker);
 
       const card=document.createElement('div'); card.className='card';
       const left=document.createElement('div'); left.className='card-left';
       const right=document.createElement('div'); right.className='card-actions';
-      left.innerHTML=`<div class="card-title">${name}</div><div class="card-sub">${address||'<span style="color:#999">地址未提供</span>'}</div><div class="card-sub">${hours ? '營業時間：'+hours : ''}${phone?' • 電話：'+phone:''}</div>`;
+      left.innerHTML=`<div class="card-title">${name}</div><div class="card-sub">${address||'<span style="color:#999">地址未提供</span>'}</div><div class="card-sub">${hours?'營業時間：'+hours:''}${phone?' • 電話：'+phone:''}</div>`;
 
       const btnView=document.createElement('button'); btnView.textContent='顯示在地圖'; btnView.style.background='#0ea5a0'; btnView.style.padding='8px 10px';
       btnView.onclick=()=>{ map.setView([lat,lon],17); marker.openPopup(); };
-
       const mapsQuery=encodeURIComponent(name+(address?' '+address:''));
-      const mapsUrl=`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-      const btnMaps=document.createElement('button'); btnMaps.textContent='在 Google Maps 開啟'; btnMaps.style.background='#1f6feb'; btnMaps.onclick=()=>{ window.open(mapsUrl,'_blank'); };
+      const btnMaps=document.createElement('button'); btnMaps.textContent='在 Google Maps 開啟'; btnMaps.style.background='#1f6feb';
+      btnMaps.onclick=()=>{ window.open(`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`,'_blank'); };
 
-      const navigateUrl=`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
-      const btnNav=document.createElement('button'); btnNav.textContent='導航'; btnNav.style.background='#ef6f6c'; btnNav.onclick=()=>{ window.open(navigateUrl,'_blank'); };
-
-      right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
+      right.appendChild(btnView); right.appendChild(btnMaps);
       card.appendChild(left); card.appendChild(right);
       cardsDiv.appendChild(card);
     });
+    lastRestaurants=restaurants;
+    reshuffleBtn.disabled=false;
   }
 
-  async function doSearch(){
-    if(searchBtn.disabled) return;
-    const city=citySelect.value; const district=districtSelect.value; const street=streetInput.value.trim();
-    if(!city||!district){ alert('請選擇縣市與區'); return; }
+  searchBtn.addEventListener('click', async()=>{
+    const city = citySelect.value;
+    const district = districtSelect.value;
+    const street = streetInput.value.trim();
+    const type = typeSelect.value;
+    if(!city || !district){ alert("請先選擇縣市與區"); return; }
     setBusy(true); showLoading();
-    infoEl.textContent=street?`搜尋：${city} ${district} ${street} 附近 1 公里`:`搜尋：${city} ${district} 全區隨機三家`;
+
+    let q = `${city} ${district}`; if(street) q+=' '+street;
     try{
-      const query=`${city} ${district}${street?' '+street:''}`;
-      const geo=await geocode(query); if(!geo) throw new Error('找不到該地址（geocode 失敗）');
-      const lat=geo.lat, lon=geo.lon; map.setView([lat,lon], street?15:13);
-      const radius=street?1000:5000;
-      const cuisine=cuisineSelect.value;
-      const restaurants=await findRestaurants(lat,lon,radius,cuisine);
-      lastRestaurants=restaurants; renderResults(restaurants);
-      reshuffleBtn.disabled=!(lastRestaurants && lastRestaurants.length>0);
-    }catch(err){ console.error(err); alert('查詢失敗：'+(err.message||err)); } finally{ hideLoading(); setBusy(false); }
+      const loc = await geocode(q);
+      if(!loc){ alert("找不到該地址"); return; }
+      const restaurants = await findRestaurants(loc.lat, loc.lon, 1200, type);
+      renderResults(restaurants);
+      if(restaurants.length>0){ map.setView([loc.lat,loc.lon],16); }
+    }catch(e){ console.warn(e); alert("查詢失敗，請稍後再試"); }
+    hideLoading(); setBusy(false);
+  });
+
+  reshuffleBtn.addEventListener('click', ()=>{
+    if(lastRestaurants.length>0) renderResults(lastRestaurants);
+  });
+
+  // 街道自動補全功能
+  let selectedSuggestionIndex = -1;
+  streetInput.addEventListener('input', async()=>{
+    const city = citySelect.value;
+    const district = districtSelect.value;
+    const inputValue = streetInput.value.trim();
+    if(!inputValue){ streetSuggestions.innerHTML=''; selectedSuggestionIndex=-1; return; }
+    const query = `${city} ${district} ${inputValue}`;
+    try{
+      const url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(query)}&format=json&countrycodes=TW&limit=7`;
+      const r = await fetch(url);
+      if(!r.ok) throw new Error('LocationIQ 錯誤');
+      const data = await r.json();
+      const roadsSet = new Set(); const suggestions=[];
+      data.forEach(d=>{ if(d.address?.road){ const road=d.address.road.trim(); if(road && !roadsSet.has(road)){ roadsSet.add(road); suggestions.push(road); } } });
+      suggestions.sort((a,b)=>{ const aIndex=a.indexOf(inputValue); const bIndex=b.indexOf(inputValue); if(aIndex===-1) return 1; if(bIndex===-1) return -1; return aIndex-bIndex; });
+      streetSuggestions.innerHTML='';
+      suggestions.slice(0,5).forEach((road,i)=>{
+        const option = document.createElement('div'); option.textContent=road; option.className='suggestion-item';
+        option.addEventListener('click',()=>{ streetInput.value=road; streetSuggestions.innerHTML=''; selectedSuggestionIndex=-1; });
+        streetSuggestions.appendChild(option);
+      });
+      selectedSuggestionIndex=-1;
+    }catch(e){ console.warn("街道自動補全失敗",e); }
+  });
+
+  streetInput.addEventListener('keydown',(e)=>{
+    const items = streetSuggestions.querySelectorAll('.suggestion-item');
+    if(!items.length) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); selectedSuggestionIndex=(selectedSuggestionIndex+1)%items.length; updateSuggestionHighlight(items);}
+    else if(e.key==='ArrowUp'){ e.preventDefault(); selectedSuggestionIndex=(selectedSuggestionIndex-1+items.length)%items.length; updateSuggestionHighlight(items);}
+    else if(e.key==='Enter'){ if(selectedSuggestionIndex>=0){ e.preventDefault(); streetInput.value=items[selectedSuggestionIndex].textContent; streetSuggestions.innerHTML=''; selectedSuggestionIndex=-1; } }
+  });
+
+  function updateSuggestionHighlight(items){
+    items.forEach((item,idx)=>{ item.style.background=idx===selectedSuggestionIndex?'#e0f7fa':''; });
   }
-
-  function reshuffle(){ if(!lastRestaurants||lastRestaurants.length===0){ alert('尚未取得餐廳資料，請先搜尋'); return; } renderResults(lastRestaurants); }
-
-  // 街道自動補全
-  streetInput.addEventListener('input', async ()=>{
-    const val=streetInput.value.trim(); streetSuggestions.innerHTML='';
-    if(val.length<2) return;
-    const q=`${citySelect.value} ${districtSelect.value} ${val}`;
-    try{
-      const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=TW&limit=5&q=${encodeURIComponent(q)}`, {headers:{"Accept":"application/json"}});
-      const data=await r.json();
-      data.forEach(d=>{ if(d.address.road){ const opt=document.createElement('option'); opt.value=d.address.road; streetSuggestions.appendChild(opt); }});
-    }catch(e){ console.warn(e); }
-  });
-
-  locateBtn.addEventListener('click', ()=>{
-    if(!navigator.geolocation){ alert('瀏覽器不支援定位'); return; }
-    navigator.geolocation.getCurrentPosition(async pos=>{
-      const lat=pos.coords.latitude, lon=pos.coords.longitude;
-      map.setView([lat,lon],15);
-      infoEl.textContent='搜尋使用者附近 1 公里餐廳';
-      setBusy(true); showLoading();
-      try{
-        const cuisine=cuisineSelect.value;
-        const restaurants=await findRestaurants(lat,lon,1000,cuisine);
-        lastRestaurants=restaurants; renderResults(restaurants);
-        reshuffleBtn.disabled=!(lastRestaurants && lastRestaurants.length>0);
-      }catch(e){ console.error(e); alert('定位搜尋失敗'); } finally{ hideLoading(); setBusy(false); }
-    }, err=>{ alert('無法取得位置: '+err.message); });
-  });
-
-  searchBtn.addEventListener('click', doSearch);
-  reshuffleBtn.addEventListener('click', reshuffle);
-
-  window._rr={ geocode, overpassQuery, findRestaurants, lastRestaurants };
   </script>
 </body>
 </html>
