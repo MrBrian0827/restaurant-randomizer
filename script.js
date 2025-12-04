@@ -194,11 +194,12 @@ async function findRestaurants(lat, lon, radius = 1000, type = ''){
       "ice_cream":[`node["shop"="ice_cream"]`,`way["shop"="ice_cream"]`,`relation["shop"="ice_cream"]`],
       "food_court":[`node["amenity"="food_court"]`,`way["amenity"="food_court"]`,`relation["amenity"="food_court"]`],
       "takeaway":[`node["shop"="takeaway"]`,`way["shop"="takeaway"]`,`relation["shop"="takeaway"]`],
-      "beverages":[
-        `node["shop"="beverages"]`,`way["shop"="beverages"]`,`relation["shop"="beverages"]`,
-        `node["amenity"="bar"]`,`way["amenity"="bar"]`,`relation["amenity"="bar"]`, // 擴充手搖飲料可能的 OSM 標籤
-        `node["cuisine"="juice"]`,`way["cuisine"="juice"]`,`relation["cuisine"="juice"]`
-      ]
+      "beverages":[`node["shop"="beverages"]`, `way["shop"="beverages"]`, `relation["shop"="beverages"]`,
+                   `node["shop"="coffee"]`, `way["shop"="coffee"]`, `relation["shop"="coffee"]`,
+                   `node["amenity"="cafe"]`, `way["amenity"="cafe"]`, `relation["amenity"="cafe"]`,
+                   `node["amenity"="bar"]`, `way["amenity"="bar"]`, `relation["amenity"="bar"]`,
+                   `node["cuisine"="juice"]`, `way["cuisine"="juice"]`, `relation["cuisine"="juice"]`
+                  ]
     };
     const arr = mapping[t] || mapping["restaurant"];
     arr.forEach(s=>filters.push(`${s}(around:${radius},${lat},${lon});`));
