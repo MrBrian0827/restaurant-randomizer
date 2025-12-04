@@ -12,7 +12,8 @@ const OVERPASS_SERVERS = [
 ];
 
 /* ----- 台灣縣市區完整清單 ----- */
-const taiwanData = {"台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
+const taiwanData = {
+"台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
   "新北市":["萬里區","金山區","板橋區","汐止區","深坑區","石碇區","瑞芳區","平溪區","雙溪區","貢寮區","新店區","坪林區","烏來區","永和區","中和區","土城區","三峽區","樹林區","鶯歌區","三重區","新莊區","泰山區","林口區","蘆洲區","五股區","八里區","淡水區","三芝區","石門區"],
   "基隆市":["仁愛區","中正區","信義區","中山區","安樂區","暖暖區","七堵區"],
   "桃園市":["中壢區","平鎮區","龍潭區","楊梅區","新屋區","觀音區","桃園區","龜山區","八德區","大溪區","復興區","大園區","蘆竹區"],
@@ -33,7 +34,8 @@ const taiwanData = {"台北市":["中正區","大同區","中山區","松山區"
   "台東縣":["台東市","成功鎮","關山鎮","卑南鄉","鹿野鄉","池上鄉","東河鄉","長濱鄉","太麻里鄉","金峰鄉","大武鄉","達仁鄉","綠島鄉","蘭嶼鄉","延平鄉","海端鄉"],
   "澎湖縣":["馬公市","湖西鄉","白沙鄉","西嶼鄉","望安鄉","七美鄉"],
   "金門縣":["金城鎮","金湖鎮","金沙鎮","金寧鄉","烈嶼鄉","烏坵鄉"],
-  "連江縣":["南竿鄉","北竿鄉","莒光鄉","東引鄉"]};
+  "連江縣":["南竿鄉","北竿鄉","莒光鄉","東引鄉"]
+};
 
 /* ----- DOM ----- */
 const citySelect = document.getElementById("citySelect");
@@ -76,7 +78,7 @@ let lastSearchCenter = null; // reference for distance sorting
   citySelect.dispatchEvent(new Event("change"));
 })();
 
-/* ----- Restaurant types dropdown (完整版本) ----- */
+/* ----- Restaurant types dropdown ----- */
 const typeOptions = [
   { label: "全部", value: "" },
   { label: "餐廳 (restaurant)", value: "restaurant" },
@@ -242,35 +244,24 @@ const mapping = {
   ]
 };
 
-/* find restaurants using Overpass (with enhanced filter for closed/歇業) */
-async function findRestaurants(lat, lon, radius = 1000, type = ''){
-  const filters = [];
-  if(!type){
-    filters.push(`node["amenity"="restaurant"](around:${radius},${lat},${lon});`);
-    filters.push(`way["amenity"="restaurant"](around:${radius},${lat},${lon});`);
-    filters.push(`relation["amenity"="restaurant"](around:${radius},${lat},${lon});`);
-  } else {
-    const t = type;
-    const arr = mapping[t] || mapping["restaurant"];
-    arr.forEach(s=>filters.push(`${s}(around:${radius},${lat},${lon});`));
-  }
+/* ----- 查找餐廳 (完全 OSM) ----- */
+async function findRestaurants(lat, lon, radius = 1000, type = '') {
+  const queries = mapping[type] || mapping['restaurant'];
+  if(!queries || queries.length===0) return [];
 
-  const q = `[out:json];(${filters.join('')});out center tags;`;
-  const data = await overpassQuery(q);
-  const elements = data.elements || [];
+  // build Overpass query
+  const aroundQuery = queries.map(q => `${q}(around:${radius},${lat},${lon});`).join("\n");
+  const overpassQ = `[out:json][timeout:25];(${aroundQuery});out center;`;
+  const result = await overpassQuery(overpassQ);
 
-  // filter out disused/abandoned/closed/etc.
-  const filtered = elements.filter(e=>{
-    const t = e.tags || {};
-    if(t.disused || t.abandoned || t["disused:amenity"] || t["abandoned:amenity"]) return false;
-    if(t.shop === "vacant") return false;
-    if(t.closed || t["contact:status"] === "closed") return false;
-    if(t.opening_hours && /closed|off|休業|歇業|永久/i.test(t.opening_hours)) return false;
-    if(t.name && /歇業|停業|永久|結束營業|closed/i.test(t.name)) return false;
-    return true;
+  if(!result.elements) return [];
+  return result.elements.map(el=>{
+    return {
+      lat: el.lat || el.center?.lat,
+      lon: el.lon || el.center?.lon,
+      tags: el.tags || {}
+    };
   });
-
-  return filtered;
 }
 
 /* clear map markers */
