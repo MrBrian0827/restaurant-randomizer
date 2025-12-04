@@ -37,6 +37,11 @@
         </div>
       </div>
 
+<div style="margin:10px 0; width:300px; border:1px solid #ccc; border-radius:5px; overflow:hidden;">
+  <div id="usageBar" style="height:20px; width:0%; background-color:#4caf50;"></div>
+</div>
+<p id="usageText" style="margin:5px 0 0 0; font-size:14px; color:#333;"></p>
+
       <div class="row">
         <div class="col" style="min-width:220px;">
           <label for="radiusInput">搜尋半徑（公尺） <span id="radiusLabel">1000</span></label>
@@ -46,7 +51,7 @@
 
         <div class="col actions-col">
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="searchBtn">搜尋餐廳</button>
+            <button id="searchBtn">搜尋</button>
             <button id="reshuffleBtn" disabled>重新抽選三家</button>
             <button id="locateBtn" class="locate">取得我的位置</button>
           </div>

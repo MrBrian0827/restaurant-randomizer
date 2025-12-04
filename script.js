@@ -576,6 +576,26 @@ locateBtn.addEventListener('click', ()=>{
 /* ----- 初始設定：radius label & enable/disable ----- */
 radiusLabel.textContent = radiusInput.value;
 
+// 每日使用量（可以每天更新或從 API/後端讀取）
+const dailyUsage = [27, 2, 18, 20, 6, 11, 59, 96, 1]; 
+
+const monthlyLimit = 5000;
+
+// 自動計算總使用量
+const totalUsed = dailyUsage.reduce((sum, val) => sum + val, 0);
+
+// 計算百分比
+const percentUsed = Math.min((totalUsed / monthlyLimit) * 100, 100).toFixed(1);
+
+// 更新進度條和文字
+const usageBar = document.getElementById('usageBar');
+const usageText = document.getElementById('usageText');
+
+if (usageBar && usageText) {
+    usageBar.style.width = percentUsed + '%';
+    usageText.textContent = `已使用 ${totalUsed} / ${monthlyLimit} 次 (${percentUsed}%)`;
+}
+
 /* ----- 小幫手：初始化完成後 enable controls ----- */
 setBusy(false);
 
