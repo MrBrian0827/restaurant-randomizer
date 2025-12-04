@@ -107,6 +107,7 @@ function setBusy(val){
   locateBtn.disabled = val;
 }
 
+/* fetch with timeout */
 async function fetchWithTimeout(url, opts={}, timeout=10000){
   const controller = new AbortController();
   const id = setTimeout(()=>controller.abort(), timeout);
@@ -175,17 +176,8 @@ async function overpassQuery(query){
   throw lastErr || new Error('All overpass failed');
 }
 
-/* find restaurants using Overpass (with improved beverages coverage & remove duplicates) */
-async function findRestaurants(lat, lon, radius = 1000, type = ''){
-  const filters = [];
-  if(!type){
-    filters.push(`node["amenity"="restaurant"](around:${radius},${lat},${lon});`);
-    filters.push(`way["amenity"="restaurant"](around:${radius},${lat},${lon});`);
-    filters.push(`relation["amenity"="restaurant"](around:${radius},${lat},${lon});`);
-  } else {
-    // map type values to query entries
-    const t = type;
-    const mapping = {
+/* ----- Mapping with enhanced beverages and other types ----- */
+const mapping = {
   "restaurant":[
     `node["amenity"="restaurant"]`, `way["amenity"="restaurant"]`, `relation["amenity"="restaurant"]`,
     `node["cuisine"]`, `way["cuisine"]`, `relation["cuisine"]`
@@ -250,6 +242,15 @@ async function findRestaurants(lat, lon, radius = 1000, type = ''){
   ]
 };
 
+/* find restaurants using Overpass (with enhanced filter for closed/歇業) */
+async function findRestaurants(lat, lon, radius = 1000, type = ''){
+  const filters = [];
+  if(!type){
+    filters.push(`node["amenity"="restaurant"](around:${radius},${lat},${lon});`);
+    filters.push(`way["amenity"="restaurant"](around:${radius},${lat},${lon});`);
+    filters.push(`relation["amenity"="restaurant"](around:${radius},${lat},${lon});`);
+  } else {
+    const t = type;
     const arr = mapping[t] || mapping["restaurant"];
     arr.forEach(s=>filters.push(`${s}(around:${radius},${lat},${lon});`));
   }
@@ -258,8 +259,7 @@ async function findRestaurants(lat, lon, radius = 1000, type = ''){
   const data = await overpassQuery(q);
   const elements = data.elements || [];
 
-  // 去重 & 過濾 disused/closed
-  const seen = new Set();
+  // filter out disused/abandoned/closed/etc.
   const filtered = elements.filter(e=>{
     const t = e.tags || {};
     if(t.disused || t.abandoned || t["disused:amenity"] || t["abandoned:amenity"]) return false;
@@ -267,10 +267,6 @@ async function findRestaurants(lat, lon, radius = 1000, type = ''){
     if(t.closed || t["contact:status"] === "closed") return false;
     if(t.opening_hours && /closed|off|休業|歇業|永久/i.test(t.opening_hours)) return false;
     if(t.name && /歇業|停業|永久|結束營業|closed/i.test(t.name)) return false;
-
-    const key = (t.name||"") + "|" + (t["addr:street"]||"") + "|" + (t["addr:housenumber"]||"");
-    if(seen.has(key)) return false;
-    seen.add(key);
     return true;
   });
 
