@@ -186,21 +186,70 @@ async function findRestaurants(lat, lon, radius = 1000, type = ''){
     // map type values to query entries
     const t = type;
     const mapping = {
-      "restaurant":[`node["amenity"="restaurant"]`,`way["amenity"="restaurant"]`,`relation["amenity"="restaurant"]`],
-      "fast_food":[`node["amenity"="fast_food"]`,`way["amenity"="fast_food"]`,`relation["amenity"="fast_food"]`],
-      "cafe":[`node["amenity"="cafe"]`,`way["amenity"="cafe"]`,`relation["amenity"="cafe"]`],
-      "bar":[`node["amenity"="bar"]`,`way["amenity"="bar"]`,`relation["amenity"="bar"]`],
-      "bakery":[`node["shop"="bakery"]`,`way["shop"="bakery"]`,`relation["shop"="bakery"]`],
-      "ice_cream":[`node["shop"="ice_cream"]`,`way["shop"="ice_cream"]`,`relation["shop"="ice_cream"]`],
-      "food_court":[`node["amenity"="food_court"]`,`way["amenity"="food_court"]`,`relation["amenity"="food_court"]`],
-      "takeaway":[`node["shop"="takeaway"]`,`way["shop"="takeaway"]`,`relation["shop"="takeaway"]`],
-      "beverages":[`node["shop"="beverages"]`, `way["shop"="beverages"]`, `relation["shop"="beverages"]`,
-                   `node["shop"="coffee"]`, `way["shop"="coffee"]`, `relation["shop"="coffee"]`,
-                   `node["amenity"="cafe"]`, `way["amenity"="cafe"]`, `relation["amenity"="cafe"]`,
-                   `node["amenity"="bar"]`, `way["amenity"="bar"]`, `relation["amenity"="bar"]`,
-                   `node["cuisine"="juice"]`, `way["cuisine"="juice"]`, `relation["cuisine"="juice"]`
-                  ]
-    };
+  "restaurant":[
+    `node["amenity"="restaurant"]`, `way["amenity"="restaurant"]`, `relation["amenity"="restaurant"]`,
+    `node["cuisine"]`, `way["cuisine"]`, `relation["cuisine"]`
+  ],
+  "fast_food":[
+    `node["amenity"="fast_food"]`, `way["amenity"="fast_food"]`, `relation["amenity"="fast_food"]`,
+    `node["shop"="fast_food"]`, `way["shop"="fast_food"]`, `relation["shop"="fast_food"]`,
+    `node["cuisine"="burger"]`, `node["cuisine"="pizza"]`, `node["cuisine"="sandwich"]`,
+    `way["cuisine"="burger"]`, `way["cuisine"="pizza"]`, `way["cuisine"="sandwich"]`,
+    `relation["cuisine"="burger"]`, `relation["cuisine"="pizza"]`, `relation["cuisine"="sandwich"]`
+  ],
+  "cafe":[
+    `node["amenity"="cafe"]`, `way["amenity"="cafe"]`, `relation["amenity"="cafe"]`,
+    `node["shop"="coffee"]`, `way["shop"="coffee"]`, `relation["shop"="coffee"]`,
+    `node["cuisine"="coffee"]`, `way["cuisine"="coffee"]`, `relation["cuisine"="coffee"]`
+  ],
+  "bar":[
+    `node["amenity"="bar"]`, `way["amenity"="bar"]`, `relation["amenity"="bar"]`,
+    `node["shop"="wine"]`, `way["shop"="wine"]`, `relation["shop"="wine"]`,
+    `node["cuisine"="beer"]`, `way["cuisine"="beer"]`, `relation["cuisine"="beer"]`
+  ],
+  "bakery":[
+    `node["shop"="bakery"]`, `way["shop"="bakery"]`, `relation["shop"="bakery"]`,
+    `node["cuisine"="bread"]`, `way["cuisine"="bread"]`, `relation["cuisine"="bread"]`
+  ],
+  "ice_cream":[
+    `node["shop"="ice_cream"]`, `way["shop"="ice_cream"]`, `relation["shop"="ice_cream"]`,
+    `node["cuisine"="ice_cream"]`, `way["cuisine"="ice_cream"]`, `relation["cuisine"="ice_cream"]`
+  ],
+  "food_court":[
+    `node["amenity"="food_court"]`, `way["amenity"="food_court"]`, `relation["amenity"="food_court"]`,
+    `node["shop"="food_court"]`, `way["shop"="food_court"]`, `relation["shop"="food_court"]`
+  ],
+  "takeaway":[
+    `node["shop"="takeaway"]`, `way["shop"="takeaway"]`, `relation["shop"="takeaway"]`,
+    `node["amenity"="takeaway"]`, `way["amenity"="takeaway"]`, `relation["amenity"="takeaway"]`
+  ],
+  "beverages":[
+    `node["shop"="beverages"]`, `way["shop"="beverages"]`, `relation["shop"="beverages"]`,
+    `node["shop"="coffee"]`, `way["shop"="coffee"]`, `relation["shop"="coffee"]`,
+    `node["amenity"="cafe"]`, `way["amenity"="cafe"]`, `relation["amenity"="cafe"]`,
+    `node["amenity"="bar"]`, `way["amenity"="bar"]`, `relation["amenity"="bar"]`,
+    `node["cuisine"="juice"]`, `way["cuisine"="juice"]`, `relation["cuisine"="juice"]`,
+    `node["cuisine"="tea"]`, `way["cuisine"="tea"]`, `relation["cuisine"="tea"]`,
+    `node["cuisine"="bubble_tea"]`, `way["cuisine"="bubble_tea"]`, `relation["cuisine"="bubble_tea"]`
+  ],
+  "night_snack":[
+    `node["amenity"="fast_food"]`, `way["amenity"="fast_food"]`, `relation["amenity"="fast_food"]`,
+    `node["shop"="food_court"]`, `way["shop"="food_court"]`, `relation["shop"="food_court"]`,
+    `node["shop"="takeaway"]`, `way["shop"="takeaway"]`, `relation["shop"="takeaway"]`
+  ],
+  "dessert":[
+    `node["shop"="ice_cream"]`, `way["shop"="ice_cream"]`, `relation["shop"="ice_cream"]`,
+    `node["shop"="patisserie"]`, `way["shop"="patisserie"]`, `relation["shop"="patisserie"]`,
+    `node["cuisine"="dessert"]`, `way["cuisine"="dessert"]`, `relation["cuisine"="dessert"]`
+  ],
+  "hotpot":[
+    `node["cuisine"="hotpot"]`, `way["cuisine"="hotpot"]`, `relation["cuisine"="hotpot"]`,
+    `node["amenity"="restaurant"]["cuisine"="hotpot"]`, 
+    `way["amenity"="restaurant"]["cuisine"="hotpot"]`, 
+    `relation["amenity"="restaurant"]["cuisine"="hotpot"]`
+  ]
+};
+
     const arr = mapping[t] || mapping["restaurant"];
     arr.forEach(s=>filters.push(`${s}(around:${radius},${lat},${lon});`));
   }
