@@ -576,27 +576,108 @@ locateBtn.addEventListener('click', ()=>{
 /* ----- 初始設定：radius label & enable/disable ----- */
 radiusLabel.textContent = radiusInput.value;
 
-// 每日使用量（可以每天更新或從 API/後端讀取）
-const dailyUsage = [27, 2, 18, 20, 6, 11, 59, 96, 1]; 
+/* ----- 小幫手：初始化完成後 enable controls ----- */
+setBusy(false);
 
-const monthlyLimit = 5000;
-
-// 自動計算總使用量
-const totalUsed = dailyUsage.reduce((sum, val) => sum + val, 0);
-
-// 計算百分比
-const percentUsed = Math.min((totalUsed / monthlyLimit) * 100, 100).toFixed(1);
-
-// 更新進度條和文字
+/* ----- 新增：浮動每月使用量計算與顯示 ----- */
 const usageBar = document.getElementById('usageBar');
 const usageText = document.getElementById('usageText');
 
-if (usageBar && usageText) {
-    usageBar.style.width = percentUsed + '%';
-    usageText.textContent = `已使用 ${totalUsed} / ${monthlyLimit} 次 (${percentUsed}%)`;
+async function updateUsage() {
+  try {
+    // 從後端 API 取得當前月使用量
+    // 你需要在後端提供 GET /usage，回傳 { current: number, limit: 5000 }
+    const r = await fetch('/usage');
+    const data = await r.json();
+    const percentUsed = Math.min((data.current / data.limit) * 100, 100).toFixed(1);
+    if (usageBar && usageText) {
+      usageBar.style.width = percentUsed + '%';
+      usageText.textContent = `已使用 ${data.current} / ${data.limit} 次 (${percentUsed}%)`;
+    }
+  } catch (e) {
+    console.error('更新使用量失敗', e);
+  }
 }
 
-/* ----- 小幫手：初始化完成後 enable controls ----- */
-setBusy(false);
+// 在成功 geocode 後累計一次
+async function incrementUsage() {
+  try {
+    // 後端提供 POST /usage/increment，每次 count=1
+    await fetch('/usage/increment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count: 1 })
+    });
+    updateUsage(); // 更新前端顯示
+  } catch (e) {
+    console.error('增加使用量失敗', e);
+  }
+}
+
+// 初始化使用量顯示
+updateUsage();
+
+/* ----- 修改 searchBtn click 事件，geocode 成功後累計使用量 ----- */
+searchBtn.addEventListener('click', async ()=>{
+  const city = citySelect.value;
+  const district = districtSelect.value;
+  const street = streetInput.value.trim();
+  const type = typeSelect.value;
+  if(!city || !district){ alert("請先選擇縣市與區"); return; }
+
+  // build full address query
+  const query = `${city} ${district}${street ? ' ' + street : ''}`;
+
+  showLoading(); setBusy(true);
+
+  // geocode full address
+  const geo = await geocode(query);
+  if(!geo){
+    hideLoading(); setBusy(false);
+    alert("找不到該地址（無精準座標），請檢查門牌或改成街道搜尋。");
+    return;
+  }
+
+  // <<< 新增：geocode 成功累計使用量
+  incrementUsage();
+
+  // if user included a number in input but geocode result doesn't contain house_number, prompt to fallback to street search
+  const userTypedHasNumber = /\d/.test(street);
+  const geocodedHasHouseNumber = geo.raw && (geo.raw.address && (geo.raw.address.house_number || geo.raw.address.housenumber || geo.raw.address.house_no));
+  if(userTypedHasNumber && !geocodedHasHouseNumber){
+    const ok = confirm("找不到精準門牌，是否改以街道/區域搜尋（可能會顯示該街附近的結果）？按「取消」可回去修改門牌。");
+    if(!ok){
+      hideLoading(); setBusy(false);
+      return;
+    }
+    // proceed but set center to the returned geocode (likely street center)
+  }
+
+  // set search center
+  lastSearchCenter = { lat: geo.lat, lon: geo.lon };
+
+  // determine radius: if 0 => treat as "全區" use 5000m; else use selected value
+  const radiusVal = parseInt(radiusInput.value, 10);
+  const radius = radiusVal === 0 ? 5000 : radiusVal;
+
+  try{
+    const restaurants = await findRestaurants(geo.lat, geo.lon, radius, type);
+    if(!restaurants || restaurants.length === 0){
+      alert("附近沒有找到符合條件的餐廳。");
+      resultsPanel.innerHTML = `<div class="small">附近沒有找到符合條件的餐廳。</div>`;
+      hideLoading(); setBusy(false);
+      return;
+    }
+    // render: nearest top 3 by ref (userLocation or lastSearchCenter)
+    renderResults(restaurants);
+    // adjust map view to center
+    map.setView([geo.lat, geo.lon], radius <= 1000 ? 15 : 13);
+  }catch(e){
+    console.error(e);
+    alert("查詢失敗，請稍後再試");
+  }
+
+  hideLoading(); setBusy(false);
+});
 
 /* End of script.js */
