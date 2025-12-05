@@ -1,6 +1,4 @@
-/* script.js
-   注意：請把 API_KEY 換成你的 LocationIQ key
-*/
+/* script.js */
 const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd"; // <- 換成你的 key
 const LOCATIONIQ_RETRY = 2;
 const NOMINATIM_RETRY = 2;
@@ -11,9 +9,7 @@ const OVERPASS_SERVERS = [
   "https://overpass.openstreetmap.fr/api/interpreter"
 ];
 
-/* ----- 台灣縣市區完整清單 ----- */
-const taiwanData = {
-"台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
+const taiwanData = {"台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
   "新北市":["萬里區","金山區","板橋區","汐止區","深坑區","石碇區","瑞芳區","平溪區","雙溪區","貢寮區","新店區","坪林區","烏來區","永和區","中和區","土城區","三峽區","樹林區","鶯歌區","三重區","新莊區","泰山區","林口區","蘆洲區","五股區","八里區","淡水區","三芝區","石門區"],
   "基隆市":["仁愛區","中正區","信義區","中山區","安樂區","暖暖區","七堵區"],
   "桃園市":["中壢區","平鎮區","龍潭區","楊梅區","新屋區","觀音區","桃園區","龜山區","八德區","大溪區","復興區","大園區","蘆竹區"],
@@ -34,8 +30,7 @@ const taiwanData = {
   "台東縣":["台東市","成功鎮","關山鎮","卑南鄉","鹿野鄉","池上鄉","東河鄉","長濱鄉","太麻里鄉","金峰鄉","大武鄉","達仁鄉","綠島鄉","蘭嶼鄉","延平鄉","海端鄉"],
   "澎湖縣":["馬公市","湖西鄉","白沙鄉","西嶼鄉","望安鄉","七美鄉"],
   "金門縣":["金城鎮","金湖鎮","金沙鎮","金寧鄉","烈嶼鄉","烏坵鄉"],
-  "連江縣":["南竿鄉","北竿鄉","莒光鄉","東引鄉"]
-};
+  "連江縣":["南竿鄉","北竿鄉","莒光鄉","東引鄉"]};
 
 /* ----- DOM ----- */
 const citySelect = document.getElementById("citySelect");
@@ -50,6 +45,8 @@ const reshuffleBtn = document.getElementById("reshuffleBtn");
 const resultsPanel = document.getElementById("resultsPanel");
 const locateBtn = document.getElementById("locateBtn");
 const loadingEl = document.getElementById("loading");
+const usageBar = document.getElementById('usageBar');
+const usageText = document.getElementById('usageText');
 
 /* Leaflet map */
 let map = L.map("map", { zoomControl:true }).setView([25.033964,121.564468], 13);
@@ -58,15 +55,15 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, 
 let currentMarkers = [];
 let lastRestaurants = [];
 let userLocation = null;
-let lastSearchCenter = null; // reference for distance sorting
+let lastSearchCenter = null;
 
-/* ----- Helper: populate city/district ----- */
+/* ----- 初始化城市與區 ----- */
 (function initCityDistrict(){
   Object.keys(taiwanData).forEach(city=>{
     const o = document.createElement("option"); o.value = city; o.textContent = city;
     citySelect.appendChild(o);
   });
-  citySelect.addEventListener("change", ()=>{
+  citySelect.addEventListener("change", ()=> {
     const city = citySelect.value;
     districtSelect.innerHTML = "";
     (taiwanData[city] || []).forEach(d => {
@@ -78,7 +75,7 @@ let lastSearchCenter = null; // reference for distance sorting
   citySelect.dispatchEvent(new Event("change"));
 })();
 
-/* ----- Restaurant types dropdown ----- */
+/* ----- 類型下拉選單 ----- */
 const typeOptions = [
   { label: "全部", value: "" },
   { label: "餐廳 (restaurant)", value: "restaurant" },
@@ -91,96 +88,65 @@ const typeOptions = [
   { label: "夜市小吃 (takeaway)", value: "takeaway" },
   { label: "飲料/手搖 (beverages)", value: "beverages" }
 ];
-typeOptions.forEach(opt=>{
-  const o = document.createElement("option"); o.value = opt.value; o.textContent = opt.label;
-  typeSelect.appendChild(o);
-});
+typeOptions.forEach(opt=>{ const o = document.createElement("option"); o.value=opt.value; o.textContent=opt.label; typeSelect.appendChild(o); });
 
-/* ----- Utils ----- */
+/* ----- 工具函式 ----- */
 function showLoading(){ loadingEl.style.display = "flex"; }
 function hideLoading(){ loadingEl.style.display = "none"; }
 function setBusy(val){
-  searchBtn.disabled = val;
-  reshuffleBtn.disabled = val;
-  citySelect.disabled = val;
-  districtSelect.disabled = val;
-  streetInput.disabled = val;
-  typeSelect.disabled = val;
-  locateBtn.disabled = val;
+  searchBtn.disabled=val; reshuffleBtn.disabled=val; citySelect.disabled=val;
+  districtSelect.disabled=val; streetInput.disabled=val; typeSelect.disabled=val; locateBtn.disabled=val;
 }
 
-/* fetch with timeout */
 async function fetchWithTimeout(url, opts={}, timeout=10000){
   const controller = new AbortController();
   const id = setTimeout(()=>controller.abort(), timeout);
-  try{
-    const r = await fetch(url, { signal: controller.signal, ...opts });
-    clearTimeout(id);
-    return r;
-  }catch(e){
-    clearTimeout(id);
-    throw e;
-  }
+  try{ const r=await fetch(url,{signal:controller.signal,...opts}); clearTimeout(id); return r; }
+  catch(e){ clearTimeout(id); throw e; }
 }
 
-/* geocode (LocationIQ first, fallback Nominatim) */
+/* ----- Geocode ----- */
 async function geocode(query){
   for(let attempt=0; attempt<=LOCATIONIQ_RETRY; attempt++){
     try{
-      let url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(query)}&format=json&addressdetails=1&countrycodes=TW&limit=3`;
+      const url=`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(query)}&format=json&addressdetails=1&countrycodes=TW&limit=3`;
       const r = await fetchWithTimeout(url, {}, 8000);
       if(!r.ok) throw new Error('LocationIQ bad response');
       const j = await r.json();
-      if(Array.isArray(j) && j.length>0){
-        return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
-      }
-    }catch(e){
-      if(attempt === LOCATIONIQ_RETRY) console.warn("LocationIQ failed:", e);
-      else await new Promise(res=>setTimeout(res, 400*(attempt+1)));
-    }
+      if(Array.isArray(j) && j.length>0) return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw:j[0] };
+    }catch(e){ if(attempt===LOCATIONIQ_RETRY) console.warn(e); else await new Promise(res=>setTimeout(res,400*(attempt+1))); }
   }
-
   for(let attempt=0; attempt<=NOMINATIM_RETRY; attempt++){
     try{
-      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=TW&limit=3&q=${encodeURIComponent(query)}`;
-      const r = await fetchWithTimeout(url, { headers: { "Accept": "application/json" } }, 8000);
+      const url=`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=TW&limit=3&q=${encodeURIComponent(query)}`;
+      const r = await fetchWithTimeout(url,{headers:{"Accept":"application/json"}},8000);
       if(!r.ok) throw new Error('Nominatim bad response');
       const j = await r.json();
-      if(Array.isArray(j) && j.length>0){
-        return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
-      }
-    }catch(e){
-      if(attempt === NOMINATIM_RETRY) console.warn("Nominatim failed:", e);
-      else await new Promise(res=>setTimeout(res, 400*(attempt+1)));
-    }
+      if(Array.isArray(j) && j.length>0) return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw:j[0] };
+    }catch(e){ if(attempt===NOMINATIM_RETRY) console.warn(e); else await new Promise(res=>setTimeout(res,400*(attempt+1))); }
   }
-
   return null;
 }
 
-/* Overpass query with retries and multiple endpoints */
+/* ----- Overpass Query ----- */
 async function overpassQuery(query){
-  let lastErr = null;
+  let lastErr=null;
   for(const endpoint of OVERPASS_SERVERS){
     for(let attempt=0; attempt<OVERPASS_RETRY; attempt++){
       try{
-        const r = await fetchWithTimeout(endpoint, { method:'POST', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: query }, 15000);
-        if(!r.ok){ lastErr = new Error(`Overpass ${endpoint} status ${r.status}`); await new Promise(res=>setTimeout(res,500*(attempt+1))); continue; }
-        const txt = await r.text();
-        if(typeof txt === 'string' && txt.trim().startsWith('<')){ lastErr = new Error('Overpass returned HTML error'); await new Promise(res=>setTimeout(res,300*(attempt+1))); continue; }
+        const r = await fetchWithTimeout(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:query},15000);
+        if(!r.ok){ lastErr=new Error(`Overpass ${endpoint} status ${r.status}`); await new Promise(res=>setTimeout(res,500*(attempt+1))); continue; }
+        const txt=await r.text();
+        if(typeof txt==='string' && txt.trim().startsWith('<')){ lastErr=new Error('Overpass returned HTML error'); await new Promise(res=>setTimeout(res,300*(attempt+1))); continue; }
         return JSON.parse(txt);
-      }catch(e){
-        lastErr = e;
-        await new Promise(res=>setTimeout(res,300*(attempt+1)));
-      }
+      }catch(e){ lastErr=e; await new Promise(res=>setTimeout(res,300*(attempt+1))); }
     }
   }
-  throw lastErr || new Error('All overpass failed');
+  throw lastErr||new Error('All overpass failed');
 }
 
-/* ----- Mapping with enhanced beverages and other types ----- */
-const mapping = {
-  "restaurant":[
+/* ----- Mapping ----- */
+const mapping = {"restaurant":[
     `node["amenity"="restaurant"]`, `way["amenity"="restaurant"]`, `relation["amenity"="restaurant"]`,
     `node["cuisine"]`, `way["cuisine"]`, `relation["cuisine"]`
   ],
@@ -241,33 +207,25 @@ const mapping = {
     `node["amenity"="restaurant"]["cuisine"="hotpot"]`, 
     `way["amenity"="restaurant"]["cuisine"="hotpot"]`, 
     `relation["amenity"="restaurant"]["cuisine"="hotpot"]`
-  ]
-};
+  ]};
 
-/* ----- 查找餐廳 (完全 OSM) ----- */
-async function findRestaurants(lat, lon, radius = 1000, type = '') {
-  const queries = mapping[type] || mapping['restaurant'];
-  if(!queries || queries.length===0) return [];
-
-  // build Overpass query
-  const aroundQuery = queries.map(q => `${q}(around:${radius},${lat},${lon});`).join("\n");
-  const overpassQ = `[out:json][timeout:25];(${aroundQuery});out center;`;
+/* ----- 查找餐廳 ----- */
+async function findRestaurants(lat,lon,radius=1000,type=''){
+  const queries = mapping[type]||mapping['restaurant'];
+  if(!queries||queries.length===0) return [];
+  const aroundQuery = queries.map(q=>`${q}(around:${radius},${lat},${lon});`).join("\n");
+  const overpassQ=`[out:json][timeout:25];(${aroundQuery});out center;`;
   const result = await overpassQuery(overpassQ);
-
   if(!result.elements) return [];
-  return result.elements.map(el=>{
-    return {
-      lat: el.lat || el.center?.lat,
-      lon: el.lon || el.center?.lon,
-      tags: el.tags || {}
-    };
-  });
+  return result.elements.map(el=>({lat:el.lat||el.center?.lat, lon:el.lon||el.center?.lon, tags:el.tags||{}}));
 }
 
-/* clear map markers */
-function clearMarkers(){
-  currentMarkers.forEach(m=>map.removeLayer(m));
-  currentMarkers = [];
+/* ----- 地圖標記 ----- */
+function clearMarkers(){ currentMarkers.forEach(m=>map.removeLayer(m)); currentMarkers=[]; }
+function distance(lat1,lon1,lat2,lon2){
+  const R=6371000, toRad=Math.PI/180, φ1=lat1*toRad, φ2=lat2*toRad, Δφ=(lat2-lat1)*toRad, Δλ=(lon2-lon1)*toRad;
+  const a=Math.sin(Δφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
 /* distance calc (meters) */
