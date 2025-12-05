@@ -1,65 +1,80 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>台灣餐廳查詢</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-sA+e2qMlhmP+GQ5Vqz+8xyc9uS1j2N5F2Uu0h8y+4Kk="
-        crossorigin=""/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>台灣餐廳隨機推薦器</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <!-- Leaflet CSS (map) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>台灣餐廳查詢</h1>
+  <div class="app">
+    <header class="header">
+      <h1>台灣餐廳隨機推薦器</h1>
+      <div class="small">LocationIQ (Geocoding) + Nominatim (Fallback) • Overpass (餐廳資料)</div>
+    </header>
 
-    <div class="controls">
-      <div>
-        <label>縣市</label>
-        <select id="citySelect"></select>
+    <section class="controls">
+      <div class="row top-row">
+        <div class="col">
+          <label for="citySelect">縣市</label>
+          <select id="citySelect" aria-label="縣市"></select>
+        </div>
+        <div class="col">
+          <label for="districtSelect">區</label>
+          <select id="districtSelect" aria-label="區"></select>
+        </div>
+        <div class="col suggestion-box" style="min-width:240px;">
+          <label for="streetInput">街道 / 門牌（可選）</label>
+          <input id="streetInput" placeholder="例如：復興南路一段123號" autocomplete="off" />
+          <div id="streetSuggestions" class="suggestions" aria-hidden="true"></div>
+        </div>
+        <div class="col">
+          <label for="typeSelect">店家類型</label>
+          <select id="typeSelect" aria-label="店家類型"></select>
+        </div>
       </div>
-      <div>
-        <label>行政區</label>
-        <select id="districtSelect"></select>
-      </div>
-      <div>
-        <label>街道 / 門牌</label>
-        <input type="text" id="streetInput" placeholder="輸入街道或門牌">
-        <div id="streetSuggestions" class="suggestions"></div>
-      </div>
-      <div>
-        <label>類型</label>
-        <select id="typeSelect"></select>
-      </div>
-      <div>
-        <label>搜尋半徑 (<span id="radiusLabel">1000</span> m)</label>
-        <input type="range" id="radiusInput" min="0" max="5000" step="100" value="1000">
-      </div>
-      <div class="buttons">
-        <button id="searchBtn">搜尋餐廳</button>
-        <button id="reshuffleBtn">隨機重排</button>
-        <button id="locateBtn">取得我的位置</button>
-      </div>
-    </div>
 
-    <div id="map" class="map"></div>
+      <div class="row">
+        <div class="col" style="min-width:220px;">
+          <label for="radiusInput">搜尋半徑（公尺） <span id="radiusLabel">1000</span></label>
+          <input id="radiusInput" type="range" min="0" max="2000" step="100" value="1000" />
+          <div class="small">0 = 全區（表示以區中心或街道中心搜尋較大範圍）</div>
+        </div>
 
-    <div id="resultsPanel" class="results"></div>
-
-    <div class="usage">
-      <label>API 使用量</label>
-      <div class="usage-container">
-        <div id="usageBar" class="usage-bar"></div>
+        <div class="col actions-col">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="searchBtn">搜尋餐廳</button>
+            <button id="reshuffleBtn" disabled>重新抽選三家</button>
+            <button id="locateBtn" class="locate">取得我的位置</button>
+          </div>
+        </div>
       </div>
-      <div id="usageText" class="usage-text"></div>
-    </div>
+    </section>
 
-    <div id="loading" class="loading">載入中…</div>
+    <main class="main-grid">
+      <!-- desktop: left = map, right = results
+           mobile: stacked (results above map) via CSS media queries -->
+      <div id="map" class="map"></div>
+
+      <aside id="resultsPanel" class="results-panel">
+        <!-- results cards injected here -->
+      </aside>
+    </main>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-o9N1j3zJ9Y0gERg+M+gQk3i3IkRt8hUb77Rfi0lC/Js="
-          crossorigin=""></script>
+  <div id="loading" class="loading-overlay" style="display:none;">
+    <div>
+      <div class="spinner"></div>
+      <div style="margin-top:10px;font-weight:600;color:#333;text-align:center;">查詢中，請稍候…</div>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- App logic -->
   <script src="script.js"></script>
 </body>
 </html>
