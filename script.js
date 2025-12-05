@@ -1,6 +1,4 @@
-/* script.js
-   注意：請把 API_KEY 換成你的 LocationIQ key
-*/
+/* script.js - 完整前端版本，LocationIQ + Nominatim + Overpass 多段判斷 */
 const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd"; // <- 換成你的 key
 const LOCATIONIQ_RETRY = 2;
 const NOMINATIM_RETRY = 2;
@@ -56,7 +54,7 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, 
 let currentMarkers = [];
 let lastRestaurants = [];
 let userLocation = null;
-let lastSearchCenter = null; // reference for distance sorting
+let lastSearchCenter = null;
 
 /* ----- Helper: populate city/district ----- */
 (function initCityDistrict(){
@@ -76,7 +74,7 @@ let lastSearchCenter = null; // reference for distance sorting
   citySelect.dispatchEvent(new Event("change"));
 })();
 
-/* ----- Restaurant types dropdown (完整版本) ----- */
+/* ----- Restaurant types dropdown ----- */
 const typeOptions = [
   { label: "全部", value: "" },
   { label: "餐廳 (restaurant)", value: "restaurant" },
@@ -120,8 +118,11 @@ async function fetchWithTimeout(url, opts={}, timeout=10000){
   }
 }
 
-/* geocode (LocationIQ first, fallback Nominatim) */
+/* ----- geocode: LocationIQ + Nominatim fallback ----- */
 async function geocode(query){
+  let geo = null;
+
+  // LocationIQ
   for(let attempt=0; attempt<=LOCATIONIQ_RETRY; attempt++){
     try{
       let url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(query)}&format=json&addressdetails=1&countrycodes=TW&limit=3`;
@@ -129,33 +130,45 @@ async function geocode(query){
       if(!r.ok) throw new Error('LocationIQ bad response');
       const j = await r.json();
       if(Array.isArray(j) && j.length>0){
-        return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
+        geo = { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
+        break;
       }
     }catch(e){
-      if(attempt === LOCATIONIQ_RETRY) console.warn("LocationIQ failed:", e);
-      else await new Promise(res=>setTimeout(res, 400*(attempt+1)));
+      if(attempt < LOCATIONIQ_RETRY) await new Promise(res=>setTimeout(res, 400*(attempt+1)));
     }
   }
 
-  for(let attempt=0; attempt<=NOMINATIM_RETRY; attempt++){
-    try{
-      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=TW&limit=3&q=${encodeURIComponent(query)}`;
-      const r = await fetchWithTimeout(url, { headers: { "Accept": "application/json" } }, 8000);
-      if(!r.ok) throw new Error('Nominatim bad response');
-      const j = await r.json();
-      if(Array.isArray(j) && j.length>0){
-        return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
+  // Nominatim fallback
+  if(!geo){
+    for(let attempt=0; attempt<=NOMINATIM_RETRY; attempt++){
+      try{
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=TW&limit=3&q=${encodeURIComponent(query)}`;
+        const r = await fetchWithTimeout(url, { headers: { "Accept": "application/json" } }, 8000);
+        if(!r.ok) throw new Error('Nominatim bad response');
+        const j = await r.json();
+        if(Array.isArray(j) && j.length>0){
+          geo = { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
+          break;
+        }
+      }catch(e){
+        if(attempt < NOMINATIM_RETRY) await new Promise(res=>setTimeout(res, 400*(attempt+1)));
       }
-    }catch(e){
-      if(attempt === NOMINATIM_RETRY) console.warn("Nominatim failed:", e);
-      else await new Promise(res=>setTimeout(res, 400*(attempt+1)));
     }
   }
 
-  return null;
+  if(!geo) return null;
+
+  // 精準門牌 fallback 街道
+  const hasNumber = /\d/.test(query);
+  const geocodedHasHouseNumber = geo.raw && geo.raw.address && (geo.raw.address.house_number || geo.raw.address.housenumber || geo.raw.address.house_no);
+  if(hasNumber && !geocodedHasHouseNumber){
+    geo.fallbackToStreet = true;
+  }
+
+  return geo;
 }
 
-/* Overpass query with retries and multiple endpoints */
+/* ----- Overpass query with retries ----- */
 async function overpassQuery(query){
   let lastErr = null;
   for(const endpoint of OVERPASS_SERVERS){
@@ -175,18 +188,10 @@ async function overpassQuery(query){
   throw lastErr || new Error('All overpass failed');
 }
 
-/* find restaurants using Overpass (with improved beverages coverage & remove duplicates) */
+/* ----- findRestaurants with filters & dedup ----- */
 async function findRestaurants(lat, lon, radius = 1000, type = ''){
   const filters = [];
-  if(!type){
-    filters.push(`node["amenity"="restaurant"](around:${radius},${lat},${lon});`);
-    filters.push(`way["amenity"="restaurant"](around:${radius},${lat},${lon});`);
-    filters.push(`relation["amenity"="restaurant"](around:${radius},${lat},${lon});`);
-  } else {
-    // map type values to query entries
-    const t = type;
-    const mapping = {
-  "restaurant":[
+  const mapping = {"restaurant":[
     `node["amenity"="restaurant"]`, `way["amenity"="restaurant"]`, `relation["amenity"="restaurant"]`,
     `node["cuisine"]`, `way["cuisine"]`, `relation["cuisine"]`
   ],
@@ -247,18 +252,14 @@ async function findRestaurants(lat, lon, radius = 1000, type = ''){
     `node["amenity"="restaurant"]["cuisine"="hotpot"]`, 
     `way["amenity"="restaurant"]["cuisine"="hotpot"]`, 
     `relation["amenity"="restaurant"]["cuisine"="hotpot"]`
-  ]
-};
-
-    const arr = mapping[t] || mapping["restaurant"];
-    arr.forEach(s=>filters.push(`${s}(around:${radius},${lat},${lon});`));
-  }
+  ]};
+  const arr = type ? (mapping[type] || mapping["restaurant"]) : mapping["restaurant"];
+  arr.forEach(s=>filters.push(`${s}(around:${radius},${lat},${lon});`));
 
   const q = `[out:json];(${filters.join('')});out center tags;`;
   const data = await overpassQuery(q);
   const elements = data.elements || [];
 
-  // 去重 & 過濾 disused/closed
   const seen = new Set();
   const filtered = elements.filter(e=>{
     const t = e.tags || {};
@@ -277,13 +278,12 @@ async function findRestaurants(lat, lon, radius = 1000, type = ''){
   return filtered;
 }
 
-/* clear map markers */
+/* ----- clearMarkers & distance ----- */
 function clearMarkers(){
   currentMarkers.forEach(m=>map.removeLayer(m));
   currentMarkers = [];
 }
 
-/* distance calc (meters) */
 function distance(lat1,lon1,lat2,lon2){
   const R=6371000; const toRad=Math.PI/180;
   const φ1=lat1*toRad, φ2=lat2*toRad;
@@ -293,7 +293,7 @@ function distance(lat1,lon1,lat2,lon2){
   return R*c;
 }
 
-/* render results: default nearest 3 by referencePoint (userLocation or lastSearchCenter) */
+/* ----- renderResults ----- */
 function renderResults(restaurants){
   clearMarkers();
   resultsPanel.innerHTML = "";
@@ -302,9 +302,7 @@ function renderResults(restaurants){
     return;
   }
 
-  // determine reference point
   const ref = userLocation ? { lat:userLocation.lat, lon:userLocation.lon } : (lastSearchCenter || null);
-
   let sorted = restaurants.slice();
   if(ref){
     sorted.sort((a,b)=>{
@@ -312,14 +310,9 @@ function renderResults(restaurants){
       const bLat = b.lat || b.center?.lat; const bLon = b.lon || b.center?.lon;
       return distance(ref.lat,ref.lon,aLat,aLon) - distance(ref.lat,ref.lon,bLat,bLon);
     });
-  } else {
-    // fallback: leave as-is
   }
 
-  // save lastRestaurants (for reshuffle)
   lastRestaurants = sorted;
-
-  // display top 3 (nearest)
   const top = sorted.slice(0,3);
 
   top.forEach(item=>{
@@ -331,73 +324,31 @@ function renderResults(restaurants){
     const hours = tags.opening_hours || "";
     const phone = tags.phone || tags["contact:phone"] || "";
 
-    // add marker (Leaflet default marker)
     const marker = L.marker([lat,lon]).addTo(map);
     marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}`);
     currentMarkers.push(marker);
 
-    // build card
-    const card = document.createElement("div");
-    card.className = "card";
+    const card = document.createElement("div"); card.className = "card";
     const left = document.createElement("div"); left.className = "card-left";
     left.innerHTML = `<p class="card-title">${name}</p>
                       <p class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</p>
                       <p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>`;
-
     const right = document.createElement("div"); right.className = "card-actions";
 
     const btnView = document.createElement("button"); btnView.textContent = "顯示在地圖";
     btnView.onclick = ()=>{ map.setView([lat,lon],17); marker.openPopup(); };
-
     const btnMaps = document.createElement("button"); btnMaps.textContent = "在 Google Maps 開啟";
-    btnMaps.onclick = ()=> {
-      const mapsQuery = encodeURIComponent(name + (address ? ' ' + address : ''));
-      const url = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-      openUrlSmart(url);
-    };
-
+    btnMaps.onclick = ()=> { window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + address)}`,"_blank"); };
     const btnNav = document.createElement("button"); btnNav.textContent = "導航";
-    btnNav.onclick = async ()=>{
-      // ask whether to use current location as origin
-      const useOrigin = confirm("是否使用你當前的位置作為起點？（按「取消」則僅顯示目的地）");
-      if(useOrigin){
-        if(!navigator.geolocation){ alert("裝置不支援定位"); return; }
-        showLoading();
-        navigator.geolocation.getCurrentPosition(pos=>{
-          const sLat = pos.coords.latitude, sLon = pos.coords.longitude;
-          const url = `https://www.google.com/maps/dir/?api=1&origin=${sLat},${sLon}&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
-          hideLoading();
-          openUrlSmart(url);
-        }, err=>{
-          hideLoading();
-          alert("無法取得位置: "+err.message);
-        }, { enableHighAccuracy:true, timeout:10000 });
-      } else {
-        const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
-        openUrlSmart(url);
-      }
-    };
+    btnNav.onclick = ()=> { window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`,"_blank"); };
 
-    right.appendChild(btnView);
-    right.appendChild(btnMaps);
-    right.appendChild(btnNav);
-
+    right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
     card.appendChild(left); card.appendChild(right);
     resultsPanel.appendChild(card);
   });
 }
 
-/* openUrlSmart: desktop => window.open, mobile => location.href (avoid blank tab) */
-function openUrlSmart(url){
-  const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  if(isMobile){
-    // direct navigation
-    window.location.href = url;
-  } else {
-    window.open(url, "_blank");
-  }
-}
-
+/* ----- 街道 autocomplete ----- */
 /* ----- Street autocomplete with LocationIQ (display full address, include house number when available) ----- */
 let selectedSuggestionIndex = -1;
 let suggestionItems = [];
@@ -424,8 +375,9 @@ streetInput.addEventListener('input', async ()=>{
     j.forEach(item=>{
       const display = item.display_name;
       if(!display) return;
-      // create suggestion
-      const div = document.createElement('div'); div.className = 'suggestion-item'; div.textContent = display;
+      const div = document.createElement('div'); 
+      div.className = 'suggestion-item'; 
+      div.textContent = display;
       div.addEventListener('click', ()=>{
         streetInput.value = display;
         streetSuggestions.innerHTML = '';
@@ -468,63 +420,42 @@ streetInput.addEventListener('keydown', (e)=>{
 function updateSuggestionHighlight(){
   suggestionItems.forEach((it, idx)=>{ it.style.background = (idx === selectedSuggestionIndex) ? '#e0f7fa' : ''; });
 }
+
 document.addEventListener('click', (e)=>{
   if(!streetInput.contains(e.target)) streetSuggestions.innerHTML = '';
 });
 
-/* ----- Search flow ----- */
+/* ----- search flow ----- */
 radiusInput.addEventListener('input', ()=>{ radiusLabel.textContent = radiusInput.value; });
 
 searchBtn.addEventListener('click', async ()=>{
   const city = citySelect.value;
   const district = districtSelect.value;
   const street = streetInput.value.trim();
-  const type = typeSelect.value;
   if(!city || !district){ alert("請先選擇縣市與區"); return; }
 
-  // build full address query
   const query = `${city} ${district}${street ? ' ' + street : ''}`;
 
   showLoading(); setBusy(true);
 
-  // geocode full address
   const geo = await geocode(query);
   if(!geo){
     hideLoading(); setBusy(false);
-    alert("找不到該地址（無精準座標），請檢查門牌或改成街道搜尋。");
+    alert("找不到該地址，請檢查門牌或改成街道搜尋。");
     return;
   }
 
-  // if user included a number in input but geocode result doesn't contain house_number, prompt to fallback to street search
-  const userTypedHasNumber = /\d/.test(street);
-  const geocodedHasHouseNumber = geo.raw && (geo.raw.address && (geo.raw.address.house_number || geo.raw.address.housenumber || geo.raw.address.house_no));
-  if(userTypedHasNumber && !geocodedHasHouseNumber){
-    const ok = confirm("找不到精準門牌，是否改以街道/區域搜尋（可能會顯示該街附近的結果）？按「取消」可回去修改門牌。");
-    if(!ok){
-      hideLoading(); setBusy(false);
-      return;
-    }
-    // proceed but set center to the returned geocode (likely street center)
+  if(geo.fallbackToStreet){
+    alert("找不到精準門牌，將使用街道中心搜尋附近餐廳。");
   }
 
-  // set search center
   lastSearchCenter = { lat: geo.lat, lon: geo.lon };
-
-  // determine radius: if 0 => treat as "全區" use 5000m; else use selected value
-  const radiusVal = parseInt(radiusInput.value, 10);
-  const radius = radiusVal === 0 ? 5000 : radiusVal;
+  const radiusVal = parseInt(radiusInput.value,10);
+  const radius = radiusVal===0 ? 5000 : radiusVal;
 
   try{
-    const restaurants = await findRestaurants(geo.lat, geo.lon, radius, type);
-    if(!restaurants || restaurants.length === 0){
-      alert("附近沒有找到符合條件的餐廳。");
-      resultsPanel.innerHTML = `<div class="small">附近沒有找到符合條件的餐廳。</div>`;
-      hideLoading(); setBusy(false);
-      return;
-    }
-    // render: nearest top 3 by ref (userLocation or lastSearchCenter)
+    const restaurants = await findRestaurants(geo.lat, geo.lon, radius, typeSelect.value);
     renderResults(restaurants);
-    // adjust map view to center
     map.setView([geo.lat, geo.lon], radius <= 1000 ? 15 : 13);
   }catch(e){
     console.error(e);
@@ -534,14 +465,15 @@ searchBtn.addEventListener('click', async ()=>{
   hideLoading(); setBusy(false);
 });
 
-/* reshuffle: randomize lastRestaurants and pick 3 */
+/* ----- reshuffle & locate button ----- */
 reshuffleBtn.addEventListener('click', ()=>{
   if(!lastRestaurants || lastRestaurants.length === 0) return;
-  // shuffle
+
   const shuffled = lastRestaurants.slice().sort(()=>Math.random()-0.5);
-  // render using shuffled (first 3)
+
   clearMarkers();
   resultsPanel.innerHTML = "";
+
   const top = shuffled.slice(0,3);
   top.forEach(item=>{
     const lat = item.lat || item.center?.lat;
@@ -556,25 +488,66 @@ reshuffleBtn.addEventListener('click', ()=>{
     marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}`);
     currentMarkers.push(marker);
 
-    const card = document.createElement("div"); card.className = "card";
-    const left = document.createElement("div"); left.className = "card-left";
-    left.innerHTML = `<p class="card-title">${name}</p><p class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</p><p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>`;
-    const right = document.createElement("div"); right.className = "card-actions";
+    const card = document.createElement("div");
+    card.className = "card";
 
-    const btnView = document.createElement("button"); btnView.textContent = "顯示在地圖"; btnView.onclick = ()=>{ map.setView([lat,lon],17); marker.openPopup(); };
-    const btnMaps = document.createElement("button"); btnMaps.textContent = "在 Google Maps 開啟"; btnMaps.onclick = ()=> { openUrlSmart(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + address)}`); };
-    const btnNav = document.createElement("button"); btnNav.textContent = "導航"; btnNav.onclick = ()=> { openUrlSmart(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`); };
+    const left = document.createElement("div");
+    left.className = "card-left";
+    left.innerHTML = `<p class="card-title">${name}</p>
+                      <p class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</p>
+                      <p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>`;
 
-    right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
-    card.appendChild(left); card.appendChild(right);
+    const right = document.createElement("div");
+    right.className = "card-actions";
+
+    const btnView = document.createElement("button");
+    btnView.textContent = "顯示在地圖";
+    btnView.onclick = ()=>{ map.setView([lat,lon],17); marker.openPopup(); };
+
+    const btnMaps = document.createElement("button");
+    btnMaps.textContent = "在 Google Maps 開啟";
+    btnMaps.onclick = ()=> { 
+      const mapsQuery = encodeURIComponent(name + (address ? ' ' + address : ''));
+      const url = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
+      openUrlSmart(url);
+    };
+
+    const btnNav = document.createElement("button");
+    btnNav.textContent = "導航";
+    btnNav.onclick = ()=> {
+      const useOrigin = confirm("是否使用你當前的位置作為起點？（按「取消」則僅顯示目的地）");
+      if(useOrigin){
+        if(!navigator.geolocation){ alert("裝置不支援定位"); return; }
+        navigator.geolocation.getCurrentPosition(pos=>{
+          const sLat = pos.coords.latitude, sLon = pos.coords.longitude;
+          const url = `https://www.google.com/maps/dir/?api=1&origin=${sLat},${sLon}&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
+          openUrlSmart(url);
+        }, err=>{
+          alert("無法取得位置: "+err.message);
+        }, { enableHighAccuracy:true, timeout:10000 });
+      } else {
+        const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
+        openUrlSmart(url);
+      }
+    };
+
+    right.appendChild(btnView);
+    right.appendChild(btnMaps);
+    right.appendChild(btnNav);
+
+    card.appendChild(left);
+    card.appendChild(right);
     resultsPanel.appendChild(card);
   });
 });
 
-/* locate button: only on user click */
+/* ----- locate button: 取得使用者目前位置 ----- */
 locateBtn.addEventListener('click', ()=>{
   if(!navigator.geolocation){ alert("您的裝置不支援定位"); return; }
-  locateBtn.disabled = true; locateBtn.textContent = "定位中…";
+
+  locateBtn.disabled = true;
+  locateBtn.textContent = "定位中…";
+
   navigator.geolocation.getCurrentPosition(pos=>{
     userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
     L.marker([userLocation.lat, userLocation.lon], { title: "您的位置" }).addTo(map);
@@ -582,14 +555,11 @@ locateBtn.addEventListener('click', ()=>{
     locateBtn.textContent = "已定位";
   }, err=>{
     alert("定位失敗：" + err.message);
-    locateBtn.disabled = false; locateBtn.textContent = "取得我的位置";
+    locateBtn.disabled = false;
+    locateBtn.textContent = "取得我的位置";
   }, { enableHighAccuracy:true, timeout:10000 });
 });
 
-/* ----- 初始設定：radius label & enable/disable ----- */
+/* ----- 初始化 radius label & enable controls ----- */
 radiusLabel.textContent = radiusInput.value;
-
-/* ----- 小幫手：初始化完成後 enable controls ----- */
 setBusy(false);
-
-/* End of script.js */
