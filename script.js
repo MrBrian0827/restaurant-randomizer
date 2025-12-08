@@ -1,14 +1,4 @@
-/* index.js
-   完整前端版本，整合你的原始碼並依照使用者需求修改：
-   - 移除取得我的位置按鈕與相關永遠開啟的地理定位功能（需求1）
-   - 導航時才詢問是否使用當前位置（需求2）
-   - 搜尋時提示正在查詢哪個區或哪條街（需求3）
-   - 搜尋結果更隨機、避免重複（需求4）
-   - 嘗試從 OpenStreetMap/Overpass tags 讀取可能的評分欄位並顯示（需求5，純開源免費方法）
-   - 擴大類型 mapping，以提高像「夜市小吃」「小吃」等類型的命中率（需求6）
-*/
-
-/* ---------- CONFIG ---------- */
+/* script.js - 完整前端版本，LocationIQ + Nominatim + Overpass 多段判斷 + 全部類型自動合併 */
 const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd"; // <- 換成你的 key
 const LOCATIONIQ_RETRY = 2;
 const NOMINATIM_RETRY = 2;
@@ -19,7 +9,7 @@ const OVERPASS_SERVERS = [
   "https://overpass.openstreetmap.fr/api/interpreter"
 ];
 
-/* ---------- 台灣縣市區清單 (原封) ---------- */
+/* ----- 台灣縣市區完整清單 ----- */
 const taiwanData = {"台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
   "新北市":["萬里區","金山區","板橋區","汐止區","深坑區","石碇區","瑞芳區","平溪區","雙溪區","貢寮區","新店區","坪林區","烏來區","永和區","中和區","土城區","三峽區","樹林區","鶯歌區","三重區","新莊區","泰山區","林口區","蘆洲區","五股區","八里區","淡水區","三芝區","石門區"],
   "基隆市":["仁愛區","中正區","信義區","中山區","安樂區","暖暖區","七堵區"],
@@ -42,9 +32,8 @@ const taiwanData = {"台北市":["中正區","大同區","中山區","松山區"
   "澎湖縣":["馬公市","湖西鄉","白沙鄉","西嶼鄉","望安鄉","七美鄉"],
   "金門縣":["金城鎮","金湖鎮","金沙鎮","金寧鄉","烈嶼鄉","烏坵鄉"],
   "連江縣":["南竿鄉","北竿鄉","莒光鄉","東引鄉"]};
-/* 注意：實際使用時請把你原本完整 taiwanData 物件貼回來 */
 
-// ---------- DOM ----------
+/* ----- DOM ----- */
 const citySelect = document.getElementById("citySelect");
 const districtSelect = document.getElementById("districtSelect");
 const streetInput = document.getElementById("streetInput");
@@ -55,20 +44,19 @@ const radiusLabel = document.getElementById("radiusLabel");
 const searchBtn = document.getElementById("searchBtn");
 const reshuffleBtn = document.getElementById("reshuffleBtn");
 const resultsPanel = document.getElementById("resultsPanel");
+const locateBtn = document.getElementById("locateBtn");
 const loadingEl = document.getElementById("loading");
-const searchInfo = document.getElementById("searchInfo");
 
-let map = L.map("map", { zoomControl: true }).setView([25.033964, 121.564468], 13);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+/* Leaflet map */
+let map = L.map("map", { zoomControl:true }).setView([25.033964,121.564468], 13);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
 
 let currentMarkers = [];
 let lastRestaurants = [];
+let userLocation = null;
 let lastSearchCenter = null;
 
-/* sessionSeen 用於儘量避免重複在不同查詢中出現相同店家 */
-const sessionSeenKeys = new Set();
-
-/* ----- populate city/district ----- */
+/* ----- Helper: populate city/district ----- */
 (function initCityDistrict(){
   Object.keys(taiwanData).forEach(city=>{
     const o = document.createElement("option"); o.value = city; o.textContent = city;
@@ -86,26 +74,25 @@ const sessionSeenKeys = new Set();
   citySelect.dispatchEvent(new Event("change"));
 })();
 
-/* ----- 類型選單: 對應 mapping 的 key (修正值以符合 mapping) ----- */
+/* ----- Restaurant types dropdown ----- */
 const typeOptions = [
   { label: "全部", value: "all" },
-  { label: "餐廳", value: "restaurant" },
-  { label: "速食", value: "fast_food" },
-  { label: "咖啡店", value: "cafe" },
-  { label: "酒吧", value: "bar" },
-  { label: "麵包/烘焙", value: "bakery" },
-  { label: "甜點/冰品", value: "ice_cream" },
-  { label: "小吃 / 夜市", value: "night_snack" },
-  { label: "路邊便當/外帶", value: "takeaway" },
-  { label: "飲料 / 手搖", value: "beverages" },
-  { label: "火鍋", value: "hotpot" }
+  { label: "餐廳 (restaurant)", value: "restaurant" },
+  { label: "速食 (fast_food)", value: "fast_food" },
+  { label: "咖啡店 (cafe)", value: "cafe" },
+  { label: "酒吧 (bar)", value: "bar" },
+  { label: "麵包/烘焙 (bakery)", value: "bakery" },
+  { label: "甜點 (ice_cream/patisserie)", value: "ice_cream" },
+  { label: "小吃/速食 (food_court)", value: "food_court" },
+  { label: "夜市小吃 (takeaway)", value: "takeaway" },
+  { label: "飲料/手搖 (beverages)", value: "beverages" }
 ];
 typeOptions.forEach(opt=>{
   const o = document.createElement("option"); o.value = opt.value; o.textContent = opt.label;
   typeSelect.appendChild(o);
 });
 
-/* ----- Helpers: loading / busy ----- */
+/* ----- Utils ----- */
 function showLoading(){ loadingEl.style.display = "flex"; }
 function hideLoading(){ loadingEl.style.display = "none"; }
 function setBusy(val){
@@ -115,9 +102,9 @@ function setBusy(val){
   districtSelect.disabled = val;
   streetInput.disabled = val;
   typeSelect.disabled = val;
+  locateBtn.disabled = val;
 }
 
-/* fetchWithTimeout */
 async function fetchWithTimeout(url, opts={}, timeout=10000){
   const controller = new AbortController();
   const id = setTimeout(()=>controller.abort(), timeout);
@@ -191,9 +178,8 @@ async function overpassQuery(query){
   throw lastErr || new Error('All overpass failed');
 }
 
-/* ----- mapping: 擴充更多 tag 以提高「夜市、小吃」命中 (需求6) ----- */
-const mapping = {
-  "restaurant":[
+/* ----- findRestaurants with filters & dedup & "all types" auto merge ----- */
+const mapping = {"restaurant":[
     `node["amenity"="restaurant"]`, `way["amenity"="restaurant"]`, `relation["amenity"="restaurant"]`,
     `node["cuisine"]`, `way["cuisine"]`, `relation["cuisine"]`
   ],
@@ -201,7 +187,8 @@ const mapping = {
     `node["amenity"="fast_food"]`, `way["amenity"="fast_food"]`, `relation["amenity"="fast_food"]`,
     `node["shop"="fast_food"]`, `way["shop"="fast_food"]`, `relation["shop"="fast_food"]`,
     `node["cuisine"="burger"]`, `node["cuisine"="pizza"]`, `node["cuisine"="sandwich"]`,
-    `way["cuisine"="burger"]`, `way["cuisine"="pizza"]`, `way["cuisine"="sandwich"]`
+    `way["cuisine"="burger"]`, `way["cuisine"="pizza"]`, `way["cuisine"="sandwich"]`,
+    `relation["cuisine"="burger"]`, `relation["cuisine"="pizza"]`, `relation["cuisine"="sandwich"]`
   ],
   "cafe":[
     `node["amenity"="cafe"]`, `way["amenity"="cafe"]`, `relation["amenity"="cafe"]`,
@@ -210,7 +197,8 @@ const mapping = {
   ],
   "bar":[
     `node["amenity"="bar"]`, `way["amenity"="bar"]`, `relation["amenity"="bar"]`,
-    `node["shop"="wine"]`, `way["shop"="wine"]`, `relation["shop"="wine"]`
+    `node["shop"="wine"]`, `way["shop"="wine"]`, `relation["shop"="wine"]`,
+    `node["cuisine"="beer"]`, `way["cuisine"="beer"]`, `relation["cuisine"="beer"]`
   ],
   "bakery":[
     `node["shop"="bakery"]`, `way["shop"="bakery"]`, `relation["shop"="bakery"]`,
@@ -218,8 +206,7 @@ const mapping = {
   ],
   "ice_cream":[
     `node["shop"="ice_cream"]`, `way["shop"="ice_cream"]`, `relation["shop"="ice_cream"]`,
-    `node["cuisine"="ice_cream"]`, `way["cuisine"="ice_cream"]`, `relation["cuisine"="ice_cream"]`,
-    `node["shop"="patisserie"]`, `way["shop"="patisserie"]`, `relation["shop"="patisserie"]`
+    `node["cuisine"="ice_cream"]`, `way["cuisine"="ice_cream"]`, `relation["cuisine"="ice_cream"]`
   ],
   "food_court":[
     `node["amenity"="food_court"]`, `way["amenity"="food_court"]`, `relation["amenity"="food_court"]`,
@@ -227,8 +214,7 @@ const mapping = {
   ],
   "takeaway":[
     `node["shop"="takeaway"]`, `way["shop"="takeaway"]`, `relation["shop"="takeaway"]`,
-    `node["amenity"="takeaway"]`, `way["amenity"="takeaway"]`, `relation["amenity"="takeaway"]`,
-    `node["shop"="kiosk"]`, `way["shop"="kiosk"]`, `relation["shop"="kiosk"]`
+    `node["amenity"="takeaway"]`, `way["amenity"="takeaway"]`, `relation["amenity"="takeaway"]`
   ],
   "beverages":[
     `node["shop"="beverages"]`, `way["shop"="beverages"]`, `relation["shop"="beverages"]`,
@@ -239,13 +225,10 @@ const mapping = {
     `node["cuisine"="tea"]`, `way["cuisine"="tea"]`, `relation["cuisine"="tea"]`,
     `node["cuisine"="bubble_tea"]`, `way["cuisine"="bubble_tea"]`, `relation["cuisine"="bubble_tea"]`
   ],
-  // 致力提高夜市 / 小吃命中
   "night_snack":[
-    `node["tourism"="night_market"]`, `way["tourism"="night_market"]`, `relation["tourism"="night_market"]`,
-    `node["amenity"="marketplace"]`, `way["amenity"="marketplace"]`, `relation["amenity"="marketplace"]`,
-    `node["shop"="street_vendor"]`, `way["shop"="street_vendor"]`, `relation["shop"="street_vendor"]`,
-    `node["shop"="kiosk"]`, `node["shop"="stall"]`,
-    `node["amenity"="fast_food"]`, `node["shop"="food_court"]`, `node["shop"="takeaway"]`
+    `node["amenity"="fast_food"]`, `way["amenity"="fast_food"]`, `relation["amenity"="fast_food"]`,
+    `node["shop"="food_court"]`, `way["shop"="food_court"]`, `relation["shop"="food_court"]`,
+    `node["shop"="takeaway"]`, `way["shop"="takeaway"]`, `relation["shop"="takeaway"]`
   ],
   "dessert":[
     `node["shop"="ice_cream"]`, `way["shop"="ice_cream"]`, `relation["shop"="ice_cream"]`,
@@ -257,10 +240,8 @@ const mapping = {
     `node["amenity"="restaurant"]["cuisine"="hotpot"]`, 
     `way["amenity"="restaurant"]["cuisine"="hotpot"]`, 
     `relation["amenity"="restaurant"]["cuisine"="hotpot"]`
-  ]
-};
+  ]};
 
-/* ----- findRestaurants: build multi-type overpass query, 除錯、去重 ----- */
 async function findRestaurants(lat, lon, radius = 1000, type = ''){
   const filters = [];
   let typesToSearch = [];
@@ -271,161 +252,64 @@ async function findRestaurants(lat, lon, radius = 1000, type = ''){
   }
   typesToSearch.forEach(t=>{
     const arr = mapping[t] || mapping["restaurant"];
-    arr.forEach(s=>{
-      // 使用 around filter
-      filters.push(`${s}(around:${radius},${lat},${lon});`);
-    });
+    arr.forEach(s=>filters.push(`${s}(around:${radius},${lat},${lon});`));
   });
-
-  // 組合 query
-  const q = `[out:json][timeout:25];(${filters.join('')});out center tags;`;
+  const q = `[out:json];(${filters.join('')});out center tags;`;
   const data = await overpassQuery(q);
   const elements = data.elements || [];
-
-  /* 進一步過濾、去重，並排除已在 sessionSeenKeys 裡優先 */
   const seen = new Set();
-  const cleaned = elements.filter(e=>{
+  return elements.filter(e=>{
     const t = e.tags || {};
     if(t.disused || t.abandoned || t["disused:amenity"] || t["abandoned:amenity"]) return false;
     if(t.shop === "vacant") return false;
     if(t.closed || t["contact:status"] === "closed") return false;
-    if(t.opening_hours && /closed|off|歇業|休業|暫停/i.test(t.opening_hours)) return false;
+    if(t.opening_hours && /closed|off|休業|歇業|永久/i.test(t.opening_hours)) return false;
     if(t.name && /歇業|停業|永久|結束營業|closed/i.test(t.name)) return false;
-    // 建立唯一 key (盡量包含 OSMid)
-    const key = (e.id ? e.type+':'+e.id : (t.name||"")+"|"+(t["addr:street"]||"")+"|"+(t["addr:housenumber"]||""));
+    const key = (t.name||"") + "|" + (t["addr:street"]||"") + "|" + (t["addr:housenumber"]||"");
     if(seen.has(key)) return false;
     seen.add(key);
     return true;
   });
-
-  return cleaned;
 }
 
 /* ----- clearMarkers & distance ----- */
 function clearMarkers(){ currentMarkers.forEach(m=>map.removeLayer(m)); currentMarkers = []; }
 function distance(lat1,lon1,lat2,lon2){ const R=6371000; const toRad=Math.PI/180; const φ1=lat1*toRad, φ2=lat2*toRad; const Δφ=(lat2-lat1)*toRad, Δλ=(lon2-lon1)*toRad; const a=Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2; const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); return R*c; }
 
-/* ----- rating extraction (從 OSM tags 嘗試找 rating-like tags; 完全免費來源) ----- */
-function extractRatingFromTags(tags){
-  if(!tags) return null;
-  const keys = ["rating","stars","review:rating","google:rating","yelp:rating","aggregate_rating","rating:average"];
-  for(const k of keys){
-    if(tags[k]){
-      const v = parseFloat(String(tags[k]).replace(',','.'));
-      if(!isNaN(v)) return v;
-    }
-  }
-  // 有些 OSM 節點會把 rating 放在 `wikidata` 或 `wikipedia`，但無法直接拿到分數，故不處理
-  return null;
-}
-
-/* ----- renderResults: 更隨機 & 盡量避免重複 (需求4) ----- */
+/* ----- renderResults ----- */
 function renderResults(restaurants){
   clearMarkers();
   resultsPanel.innerHTML = "";
   if(!restaurants || restaurants.length===0){ resultsPanel.innerHTML = `<div class="small">找不到符合的餐廳。</div>`; return; }
-
-  // 優先把未在 sessionSeenKeys 的項目挑到前面
-  const withKeys = restaurants.map(r => {
-    const key = r.id ? r.type+':'+r.id : ((r.tags && r.tags.name)||"")+"|"+(r.tags && r.tags["addr:street"]||"");
-    return { r, key, seen: sessionSeenKeys.has(key) };
-  });
-
-  // 先拿未看過的，如果不夠再補已看過的
-  const unseen = withKeys.filter(x=>!x.seen).map(x=>x.r);
-  const seen = withKeys.filter(x=>x.seen).map(x=>x.r);
-
-  // 隨機打亂 (Fisher-Yates)
-  function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]];} return arr; }
-  const pool = shuffle(unseen).concat(shuffle(seen));
-
-  // 選前 6 個作為候選（若總數少則全部選取）
-  const candidateCount = Math.min(6, pool.length);
-  const candidates = pool.slice(0, candidateCount);
-
-  // 若仍不足，就使用全部並隨機排序
-  if(candidates.length===0){
-    lastRestaurants = shuffle(restaurants.slice());
-  } else {
-    lastRestaurants = shuffle(candidates.concat(pool.slice(candidateCount)));
-  }
-
-  // 把會顯示的那幾個標為已看過，sessionSeenKeys 用來避免未來重複出現（儘量）
-  lastRestaurants.slice(0,6).forEach(item=>{
-    const key = item.id ? item.type+':'+item.id : ((item.tags && item.tags.name)||"")+"|"+(item.tags && item.tags["addr:street"]||"");
-    sessionSeenKeys.add(key);
-  });
-
-  // 渲染最多 6 張卡片（視畫面大小）
-  const toShow = lastRestaurants.slice(0,6);
-  toShow.forEach(item=>{
+  const ref = userLocation ? { lat:userLocation.lat, lon:userLocation.lon } : (lastSearchCenter || null);
+  let sorted = restaurants.slice();
+  if(ref){ sorted.sort((a,b)=>{ const aLat = a.lat || a.center?.lat; const aLon = a.lon || a.center?.lon; const bLat = b.lat || b.center?.lat; const bLon = b.lon || b.center?.lon; return distance(ref.lat,ref.lon,aLat,aLon) - distance(ref.lat,ref.lon,bLat,bLon); }); }
+  lastRestaurants = sorted;
+  const top = sorted.slice(0,3);
+  top.forEach(item=>{
     const lat = item.lat || item.center?.lat;
     const lon = item.lon || item.center?.lon;
-    if(!lat || !lon) return;
     const tags = item.tags || {};
     const name = tags.name || "未提供名稱";
-    const address = (tags["addr:full"] || (tags["addr:street"] ? tags["addr:street"] + (tags["addr:housenumber"] ? ' ' + tags["addr:housenumber"] : '') : '') ) || '';
+    const address = (tags["addr:full"] || tags["addr:street"] || tags["addr:housenumber"] || "").toString();
     const hours = tags.opening_hours || "";
     const phone = tags.phone || tags["contact:phone"] || "";
-    const rating = extractRatingFromTags(tags);
-
-    // marker
     const marker = L.marker([lat,lon]).addTo(map);
-    marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}${rating?'<br>評分：'+rating:''}`);
+    marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}`);
     currentMarkers.push(marker);
-
-    // card
     const card = document.createElement("div"); card.className = "card";
     const left = document.createElement("div"); left.className = "card-left";
-    left.innerHTML = `<p class="card-title">${name}</p>
-                      <p class="card-sub">${address || '<span class="muted">地址未提供</span>'}</p>
-                      <p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>`;
-
-    // 顯示評分（若有）
-    const ratingHtml = rating ? `<div class="rating">評分：${rating} / 5</div>` : `<div class="rating muted">評分：無</div>`;
-    left.insertAdjacentHTML('beforeend', ratingHtml);
-
+    left.innerHTML = `<p class="card-title">${name}</p><p class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</p><p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>`;
     const right = document.createElement("div"); right.className = "card-actions";
     const btnView = document.createElement("button"); btnView.textContent = "顯示在地圖"; btnView.onclick = ()=>{ map.setView([lat,lon],17); marker.openPopup(); };
     const btnMaps = document.createElement("button"); btnMaps.textContent = "在 Google Maps 開啟"; btnMaps.onclick = ()=> { const mapsQuery = encodeURIComponent(name + (address ? ' ' + address : '')); window.open(`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`,"_blank"); };
-    const btnNav = document.createElement("button"); btnNav.textContent = "導航"; btnNav.onclick = ()=> {
-      // 需求2：在導航時才詢問是否要使用當前位置
-      const useOrigin = confirm("導航：是否使用你當前的位置作為起點？按「取消」則僅顯示目的地。");
-      if(useOrigin){
-        if(!navigator.geolocation){
-          alert("裝置不支援定位");
-          const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
-          window.open(url,"_blank");
-          return;
-        }
-        showLoading(); setBusy(true);
-        navigator.geolocation.getCurrentPosition(pos=>{
-          hideLoading(); setBusy(false);
-          const sLat = pos.coords.latitude, sLon = pos.coords.longitude;
-          const url = `https://www.google.com/maps/dir/?api=1&origin=${sLat},${sLon}&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
-          window.open(url,"_blank");
-        }, err=>{
-          hideLoading(); setBusy(false);
-          alert("無法取得位置: "+err.message);
-          const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
-          window.open(url,"_blank");
-        }, { enableHighAccuracy:true, timeout:10000 });
-      } else {
-        const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
-        window.open(url,"_blank");
-      }
-    };
-
+    const btnNav = document.createElement("button"); btnNav.textContent = "導航"; btnNav.onclick = ()=> { const useOrigin = confirm("是否使用你當前的位置作為起點？（按「取消」則僅顯示目的地）"); if(useOrigin){ if(!navigator.geolocation){ alert("裝置不支援定位"); return; } navigator.geolocation.getCurrentPosition(pos=>{ const sLat = pos.coords.latitude, sLon = pos.coords.longitude; const url = `https://www.google.com/maps/dir/?api=1&origin=${sLat},${sLon}&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`; window.open(url,"_blank"); }, err=>{ alert("無法取得位置: "+err.message); }, { enableHighAccuracy:true, timeout:10000 }); } else { const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`; window.open(url,"_blank"); } };
     right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
-    card.appendChild(left); card.appendChild(right);
-    resultsPanel.appendChild(card);
+    card.appendChild(left); card.appendChild(right); resultsPanel.appendChild(card);
   });
-
-  // Map 重新聚焦到中心 (lastSearchCenter)
-  if(lastSearchCenter) map.setView([lastSearchCenter.lat, lastSearchCenter.lon], radiusInput.value <= 1000 ? 15 : 13);
 }
 
-/* ----- 街道 autocomplete (保留原本行為) ----- */
+/* ----- 街道 autocomplete ----- */
 let selectedSuggestionIndex = -1;
 let suggestionItems = [];
 streetInput.addEventListener('input', async ()=>{
@@ -435,6 +319,7 @@ streetInput.addEventListener('input', async ()=>{
   if(!q){ streetSuggestions.innerHTML = ''; suggestionItems = []; selectedSuggestionIndex=-1; return; }
   try{
     let url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(city+' '+district+' '+q)}&format=json&addressdetails=1&countrycodes=TW&limit=6`;
+    if(userLocation){ const delta = 0.05; url += `&viewbox=${userLocation.lon-delta},${userLocation.lat-delta},${userLocation.lon+delta},${userLocation.lat+delta}&bounded=1`; }
     const r = await fetchWithTimeout(url);
     if(!r.ok) throw new Error('LocationIQ suggestion error');
     const j = await r.json();
@@ -466,17 +351,8 @@ searchBtn.addEventListener('click', async ()=>{
   const district = districtSelect.value;
   const street = streetInput.value.trim();
   if(!city || !district){ alert("請先選擇縣市與區"); return; }
-
-  // 顯示目前搜尋資訊 (要求3)
-  if(!street){
-    searchInfo.textContent = `正在搜尋：${city} ${district}（整個區域）`;
-  } else {
-    const radiusKm = (parseInt(radiusInput.value,10) || 1000) / 1000;
-    searchInfo.textContent = `正在搜尋：${city} ${district} — 街道/門牌：${street}（搜尋範圍約 ${radiusKm.toFixed(1)} 公里）`;
-  }
-
-  showLoading(); setBusy(true);
   const query = `${city} ${district}${street ? ' ' + street : ''}`;
+  showLoading(); setBusy(true);
   const geo = await geocode(query);
   if(!geo){ hideLoading(); setBusy(false); alert("找不到該地址，請檢查門牌或改成街道搜尋。"); return; }
   if(geo.fallbackToStreet) alert("找不到精準門牌，將使用街道中心搜尋附近餐廳。");
@@ -484,30 +360,29 @@ searchBtn.addEventListener('click', async ()=>{
   const radiusVal = parseInt(radiusInput.value,10); const radius = radiusVal===0?5000:radiusVal;
   try{
     const restaurants = await findRestaurants(geo.lat, geo.lon, radius, typeSelect.value);
-    if(!restaurants || restaurants.length===0){
-      resultsPanel.innerHTML = `<div class="small">查無餐廳 (嘗試放大半徑或選擇「全部」類型)。</div>`;
-    } else {
-      renderResults(restaurants);
-    }
+    renderResults(restaurants);
     map.setView([geo.lat, geo.lon], radius <= 1000 ? 15 : 13);
-  }catch(e){
-    console.error(e); alert("查詢失敗，請稍後再試");
-  }
+  }catch(e){ console.error(e); alert("查詢失敗，請稍後再試"); }
   hideLoading(); setBusy(false);
 });
 
 /* ----- reshuffle ----- */
 reshuffleBtn.addEventListener('click', ()=>{
   if(!lastRestaurants.length){ alert("尚未有搜尋結果"); return; }
-  // 重新打亂 lastRestaurants 並 render
   lastRestaurants = lastRestaurants.sort(()=>Math.random()-0.5);
   renderResults(lastRestaurants);
 });
 
-/* ----- 初始 UI 狀態 ----- */
-radiusLabel.textContent = radiusInput.value;
-searchInfo.textContent = "請選擇縣市與區，輸入街道可縮小搜尋範圍。";
-
-/* ----- 注意: 移除全域定位按鈕邏輯 (需求1) ----- */
-/* 已將只有在導航時才詢問位置 (見上方 btnNav onclick) */
-
+/* ----- geolocation ----- */
+locateBtn.addEventListener('click', ()=>{
+  if(!navigator.geolocation){ alert("裝置不支援定位"); return; }
+  showLoading(); setBusy(true);
+  navigator.geolocation.getCurrentPosition(pos=>{
+    userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+    map.setView([userLocation.lat, userLocation.lon], 15);
+    hideLoading(); setBusy(false);
+  }, err=>{
+    hideLoading(); setBusy(false);
+    alert("無法取得位置: "+err.message);
+  }, { enableHighAccuracy:true, timeout:10000 });
+});

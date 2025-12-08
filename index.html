@@ -1,71 +1,73 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>台灣餐廳隨機推薦器</title>
-    <link rel="stylesheet" href="styles.css" />
-    <!-- 原本是 index.js / script.js 任一名稱都可，script 檔名與下面一致 -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地圖搜尋整合</title>
+    <link rel="stylesheet" href="styles.css">
     <script defer src="index.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 </head>
 <body>
     <header>
-        <h1>台灣餐廳隨機推薦器</h1>
+        <h1>地圖搜尋整合工具</h1>
     </header>
-
+    
     <main>
-        <section id="controls">
-            <div id="search-row">
-                <div class="field">
-                    <label for="citySelect">縣市</label>
-                    <select id="citySelect"></select>
-                </div>
-                <div class="field">
-                    <label for="districtSelect">區</label>
-                    <select id="districtSelect"></select>
-                </div>
-                <div class="field street-field">
-                    <label for="streetInput">街道 / 門牌（選填）</label>
-                    <input type="text" id="streetInput" placeholder="例如：仁愛路、八德路"/>
-                    <div id="streetSuggestions" class="suggestions"></div>
-                </div>
-                <div class="field">
-                    <label for="typeSelect">類型</label>
-                    <select id="typeSelect"></select>
-                </div>
-                <div class="field range-field">
-                    <label for="radiusInput">搜尋半徑 (m)</label>
-                    <input type="range" id="radiusInput" min="0" max="5000" step="100" value="1000"/>
-                    <div id="radiusLabel">1000</div>
-                </div>
-            </div>
-
-            <div id="action-row">
-                <button id="searchBtn" class="primary">搜尋</button>
-                <button id="reshuffleBtn">重新隨機排序</button>
-                <!-- 注意：已移除「取得我的位置」按鈕，改為在導航時詢問是否要使用當前位置 -->
-            </div>
-
-            <!-- 顯示目前搜尋資訊（第 3 點需求） -->
-            <div id="searchInfo" class="search-info" aria-live="polite"></div>
+        <section id="search-section">
+            <label for="search-input">輸入地點或關鍵字：</label>
+            <input type="text" id="search-input" placeholder="例如：咖啡店">
+            <button id="search-btn">搜尋</button>
         </section>
 
-        <section id="map-and-results">
-            <div id="map"></div>
-
-            <aside id="resultsPanel" class="results"></aside>
-        </section>
-
-        <section id="loading" class="loading" style="display:none;">
-            <div class="spinner"></div>
-            <div>查詢中，請稍候…</div>
+        <section id="results-section">
+            <h2>搜尋結果</h2>
+            <div id="results-container"></div>
         </section>
     </main>
 
     <footer>
-        <p>&copy; 2025 台灣餐廳隨機推薦器</p>
+        <p>&copy; 2025 地圖搜尋整合工具</p>
     </footer>
+
+    <script>
+        // 確保所有 DOM 元素載入後再初始化
+        document.addEventListener("DOMContentLoaded", () => {
+            const searchBtn = document.getElementById("search-btn");
+            const searchInput = document.getElementById("search-input");
+            const resultsContainer = document.getElementById("results-container");
+
+            // 單點入口，保留功能完整性
+            searchBtn.addEventListener("click", async () => {
+                const query = searchInput.value.trim();
+                if (!query) return alert("請輸入搜尋關鍵字！");
+                
+                resultsContainer.innerHTML = "搜尋中...";
+                
+                try {
+                    // 呼叫後端 API 進行整合搜尋
+                    const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+                    const data = await response.json();
+
+                    if (!data || data.length === 0) {
+                        resultsContainer.innerHTML = "<p>找不到任何結果</p>";
+                        return;
+                    }
+
+                    // 渲染結果
+                    resultsContainer.innerHTML = data.map(item => `
+                        <div class="result-item">
+                            <h3>${item.name}</h3>
+                            <p>${item.address}</p>
+                            <p>來源: ${item.source}</p>
+                        </div>
+                    `).join("");
+
+                } catch (err) {
+                    console.error("搜尋錯誤:", err);
+                    resultsContainer.innerHTML = "<p>搜尋失敗，請稍後再試</p>";
+                }
+            });
+        });
+    </script>
 </body>
 </html>
