@@ -1,80 +1,71 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>台灣餐廳隨機推薦器</title>
-
-  <link rel="stylesheet" href="style.css" />
-  <!-- Leaflet CSS (map) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>台灣餐廳隨機推薦器</title>
+    <link rel="stylesheet" href="styles.css" />
+    <!-- 原本是 index.js / script.js 任一名稱都可，script 檔名與下面一致 -->
+    <script defer src="index.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
 </head>
 <body>
-  <div class="app">
-    <header class="header">
-      <h1>台灣餐廳隨機推薦器</h1>
-      <div class="small">LocationIQ (Geocoding) + Nominatim (Fallback) • Overpass (餐廳資料)</div>
+    <header>
+        <h1>台灣餐廳隨機推薦器</h1>
     </header>
 
-    <section class="controls">
-      <div class="row top-row">
-        <div class="col">
-          <label for="citySelect">縣市</label>
-          <select id="citySelect" aria-label="縣市"></select>
-        </div>
-        <div class="col">
-          <label for="districtSelect">區</label>
-          <select id="districtSelect" aria-label="區"></select>
-        </div>
-        <div class="col suggestion-box" style="min-width:240px;">
-          <label for="streetInput">街道 / 門牌（可選）</label>
-          <input id="streetInput" placeholder="例如：復興南路一段123號" autocomplete="off" />
-          <div id="streetSuggestions" class="suggestions" aria-hidden="true"></div>
-        </div>
-        <div class="col">
-          <label for="typeSelect">店家類型</label>
-          <select id="typeSelect" aria-label="店家類型"></select>
-        </div>
-      </div>
+    <main>
+        <section id="controls">
+            <div id="search-row">
+                <div class="field">
+                    <label for="citySelect">縣市</label>
+                    <select id="citySelect"></select>
+                </div>
+                <div class="field">
+                    <label for="districtSelect">區</label>
+                    <select id="districtSelect"></select>
+                </div>
+                <div class="field street-field">
+                    <label for="streetInput">街道 / 門牌（選填）</label>
+                    <input type="text" id="streetInput" placeholder="例如：仁愛路、八德路"/>
+                    <div id="streetSuggestions" class="suggestions"></div>
+                </div>
+                <div class="field">
+                    <label for="typeSelect">類型</label>
+                    <select id="typeSelect"></select>
+                </div>
+                <div class="field range-field">
+                    <label for="radiusInput">搜尋半徑 (m)</label>
+                    <input type="range" id="radiusInput" min="0" max="5000" step="100" value="1000"/>
+                    <div id="radiusLabel">1000</div>
+                </div>
+            </div>
 
-      <div class="row">
-        <div class="col" style="min-width:220px;">
-          <label for="radiusInput">搜尋半徑（公尺） <span id="radiusLabel">1000</span></label>
-          <input id="radiusInput" type="range" min="0" max="2000" step="100" value="1000" />
-          <div class="small">0 = 全區（表示以區中心或街道中心搜尋較大範圍）</div>
-        </div>
+            <div id="action-row">
+                <button id="searchBtn" class="primary">搜尋</button>
+                <button id="reshuffleBtn">重新隨機排序</button>
+                <!-- 注意：已移除「取得我的位置」按鈕，改為在導航時詢問是否要使用當前位置 -->
+            </div>
 
-        <div class="col actions-col">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="searchBtn">搜尋餐廳</button>
-            <button id="reshuffleBtn" disabled>重新抽選三家</button>
-            <button id="locateBtn" class="locate">取得我的位置</button>
-          </div>
-        </div>
-      </div>
-    </section>
+            <!-- 顯示目前搜尋資訊（第 3 點需求） -->
+            <div id="searchInfo" class="search-info" aria-live="polite"></div>
+        </section>
 
-    <main class="main-grid">
-      <!-- desktop: left = map, right = results
-           mobile: stacked (results above map) via CSS media queries -->
-      <div id="map" class="map"></div>
+        <section id="map-and-results">
+            <div id="map"></div>
 
-      <aside id="resultsPanel" class="results-panel">
-        <!-- results cards injected here -->
-      </aside>
+            <aside id="resultsPanel" class="results"></aside>
+        </section>
+
+        <section id="loading" class="loading" style="display:none;">
+            <div class="spinner"></div>
+            <div>查詢中，請稍候…</div>
+        </section>
     </main>
-  </div>
 
-  <div id="loading" class="loading-overlay" style="display:none;">
-    <div>
-      <div class="spinner"></div>
-      <div style="margin-top:10px;font-weight:600;color:#333;text-align:center;">查詢中，請稍候…</div>
-    </div>
-  </div>
-
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <!-- App logic -->
-  <script src="script.js"></script>
+    <footer>
+        <p>&copy; 2025 台灣餐廳隨機推薦器</p>
+    </footer>
 </body>
 </html>
