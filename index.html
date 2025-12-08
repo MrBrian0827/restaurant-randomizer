@@ -48,12 +48,15 @@
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button id="searchBtn">搜尋餐廳</button>
             <button id="reshuffleBtn" disabled>重新抽選三家</button>
+            <button id="locateBtn" class="locate">取得我的位置</button>
           </div>
         </div>
       </div>
     </section>
 
     <main class="main-grid">
+      <!-- desktop: left = map, right = results
+           mobile: stacked (results above map) via CSS media queries -->
       <div id="map" class="map"></div>
 
       <aside id="resultsPanel" class="results-panel">
