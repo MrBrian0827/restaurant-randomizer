@@ -43,32 +43,27 @@ let shownRestaurantsKeys = new Set();
 const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
 
-// ----- 隨機抽選 top 3 並避免重複 -----
 function getRandomTop3(arr){
-  // 先排除已經顯示過的餐廳
-  const copy = arr.filter(r=>{
-    const key = (r.tags.name||"") + "|" + (r.tags["addr:street"]||"") + "|" + (r.tags["addr:housenumber"]||"");
-    return !shownRestaurantsKeys.has(key);
-  });
+  if(!arr || arr.length === 0) return [];
 
-  // 如果剩下不夠 3 間，就直接回傳全部，並加入已顯示 Set
-  if(copy.length <= 3){
-    copy.forEach(r=>{
-      const key = (r.tags.name||"") + "|" + (r.tags["addr:street"]||"") + "|" + (r.tags["addr:housenumber"]||"");
-      shownRestaurantsKeys.add(key);
-    });
-    return copy;
-  }
+  // 優先完整資料（有 name 和 address）
+  const fullInfo = arr.filter(r => r.tags?.name && (r.tags["addr:full"] || r.tags["addr:street"] || r.tags["addr:housenumber"]));
+  const partialInfo = arr.filter(r => !r.tags?.name || !(r.tags["addr:full"] || r.tags["addr:street"] || r.tags["addr:housenumber"]));
 
-  // 隨機抽 3 間
+  // 將完整資料先隨機化
+  const copy = shuffleArray(fullInfo.concat(partialInfo));
+
   const selected = [];
-  while(selected.length < 3){
-    const idx = Math.floor(Math.random() * copy.length);
-    const r = copy[idx];
+  const usedKeys = new Set();
+
+  for(const r of copy){
+    if(selected.length >= 3) break;
+    const t = r.tags || {};
+    const typeTag = t.amenity || t.shop || t.leisure || "restaurant";
+    const key = (t.name || "") + "|" + typeTag;
+    if(usedKeys.has(key)) continue;
     selected.push(r);
-    copy.splice(idx, 1);
-    const key = (r.tags.name||"") + "|" + (r.tags["addr:street"]||"") + "|" + (r.tags["addr:housenumber"]||"");
-    shownRestaurantsKeys.add(key);
+    usedKeys.add(key);
   }
   return selected;
 }
@@ -346,25 +341,33 @@ btnView.onclick = ()=>{
   marker.openPopup();
 };
 
-// Google Maps 開啟
+// ----- Google Maps 開啟 -----
 const btnMaps = document.createElement("button");
 btnMaps.textContent = "在 Google Maps 開啟";
 btnMaps.onclick = () => {
-  // 優先用完整地址
-  let hasFullAddress = tags["addr:full"] || (tags["addr:street"] && tags["addr:housenumber"]);
-  if(hasFullAddress) {
+  let url = '';
+  let showWarning = false;
+
+  // 有完整地址 → 精準搜尋
+  if (tags.name && (tags["addr:full"] || (tags["addr:street"] && tags["addr:housenumber"]))) {
     const streetPart = (tags["addr:full"] || (tags["addr:street"] + ' ' + (tags["addr:housenumber"] || ''))).trim();
     const query = encodeURIComponent(`${streetPart}, ${districtSelect.value}, ${citySelect.value}`);
-    openUrlSmart(`https://www.google.com/maps/search/?api=1&query=${query}`);
-  } else if(lat && lon) {
-    // 用經緯度精準顯示位置
-    const query = encodeURIComponent(`${lat},${lon}`);
-    openUrlSmart(`https://www.google.com/maps/search/?api=1&query=${query}`);
+    url = `https://www.google.com/maps/search/?api=1&query=${query}`;
   } else {
-    alert("找不到精準位置，無法在 Google Maps 顯示。");
+    // 沒完整地址 → 只能用經緯度，Google Maps 搜尋可能不顯示名稱
+    const query = encodeURIComponent(`${lat},${lon}`);
+    url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    showWarning = true;
   }
+
+  if (showWarning) {
+    alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+  }
+
+  openUrlSmart(url);
 };
 
+// 導航
 const btnNav = document.createElement("button");
 btnNav.textContent = "導航";
 btnNav.onclick = () => {
