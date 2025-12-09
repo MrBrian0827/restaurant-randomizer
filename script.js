@@ -68,6 +68,29 @@ function getRandomTop3(arr){
   return selected;
 }
 
+const themeToggleBtn = document.getElementById("themeToggle");
+// 初始化文字
+function updateThemeButtonText() {
+  if (document.body.classList.contains("dark-mode")) {
+    themeToggleBtn.textContent = "切換光亮模式";
+  } else {
+    themeToggleBtn.textContent = "切換黑暗模式";
+  }
+}
+
+// 讀取使用者偏好
+const savedTheme = localStorage.getItem("theme");
+if (savedTheme === "dark") document.body.classList.add("dark-mode");
+updateThemeButtonText();
+
+// 切換模式
+themeToggleBtn.addEventListener("click", () => {
+  document.body.classList.toggle("dark-mode");
+  const isDark = document.body.classList.contains("dark-mode");
+  localStorage.setItem("theme", isDark ? "dark" : "light");
+  updateThemeButtonText();
+});
+
 // ----- reshuffle top 3 -----
 reshuffleBtn.addEventListener('click', ()=>{ 
   if(!allRestaurants || allRestaurants.length===0) return;
@@ -149,24 +172,29 @@ async function ensureNetwork(){
 }
 
 // ----- open URL 智能打開 -----
+// 每個 URL 都獨立重試，不阻止後續點擊
 async function openUrlSmart(url){
-  if(await ensureNetwork()){
-    const win = window.open(url, "_blank", "noopener,noreferrer");
-    if(win) win.focus();
-    pendingOpenUrl = null;
-  }else{
-    if(!pendingOpenUrl){
-      alert("網路似乎有問題，無法開啟 Google Maps，請檢查網路連線。");
-      pendingOpenUrl = url;
-      const retryInterval = setInterval(async ()=>{
-        if(pendingOpenUrl && await ensureNetwork()){
-          const win = window.open(pendingOpenUrl, "_blank", "noopener,noreferrer");
-          if(win) win.focus();
-          pendingOpenUrl = null;
-          clearInterval(retryInterval);
-        }
-      }, 5000);
+  try {
+    if(await ensureNetwork()){
+      const win = window.open(url, "_blank", "noopener,noreferrer");
+      if(win) win.focus();
+      return;
     }
+
+    alert("網路似乎有問題，無法開啟 Google Maps，請檢查網路連線。");
+
+    // 失敗時自動重試這個 URL
+    const retryInterval = setInterval(async () => {
+      const online = await ensureNetwork();
+      if(online){
+        const win = window.open(url, "_blank", "noopener,noreferrer");
+        if(win) win.focus();
+        clearInterval(retryInterval);
+      }
+    }, 5000);
+
+  } catch(e){
+    alert("無法開啟連結: " + e.message);
   }
 }
 
