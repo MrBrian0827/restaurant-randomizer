@@ -1,5 +1,6 @@
 /* script.js - 使用 constants.js 拆分的完整版 */
-import { taiwanData, mapping } from './constants.js';
+const taiwanData = window.taiwanData;
+const mapping = window.mapping;
 
 const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd"; // <- 換成你的 key
 const LOCATIONIQ_RETRY = 2;
@@ -38,8 +39,73 @@ let allRestaurants = [];
 let networkOnlineCache = null;
 let networkLastCheck = 0;
 let pendingOpenUrl = null;
+let shownRestaurantsKeys = new Set();
 const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
+
+// ----- 隨機抽選 top 3 並避免重複 -----
+function getRandomTop3(arr){
+  // 先排除已經顯示過的餐廳
+  const copy = arr.filter(r=>{
+    const key = (r.tags.name||"") + "|" + (r.tags["addr:street"]||"") + "|" + (r.tags["addr:housenumber"]||"");
+    return !shownRestaurantsKeys.has(key);
+  });
+
+  // 如果剩下不夠 3 間，就直接回傳全部，並加入已顯示 Set
+  if(copy.length <= 3){
+    copy.forEach(r=>{
+      const key = (r.tags.name||"") + "|" + (r.tags["addr:street"]||"") + "|" + (r.tags["addr:housenumber"]||"");
+      shownRestaurantsKeys.add(key);
+    });
+    return copy;
+  }
+
+  // 隨機抽 3 間
+  const selected = [];
+  while(selected.length < 3){
+    const idx = Math.floor(Math.random() * copy.length);
+    const r = copy[idx];
+    selected.push(r);
+    copy.splice(idx, 1);
+    const key = (r.tags.name||"") + "|" + (r.tags["addr:street"]||"") + "|" + (r.tags["addr:housenumber"]||"");
+    shownRestaurantsKeys.add(key);
+  }
+  return selected;
+}
+
+// ----- reshuffle top 3 -----
+reshuffleBtn.addEventListener('click', ()=>{ 
+  if(!allRestaurants || allRestaurants.length===0) return;
+  renderResults(getRandomTop3(allRestaurants));
+});
+
+// ----- searchBtn -----
+searchBtn.addEventListener('click', async ()=>{
+  const city = citySelect.value;
+  const district = districtSelect.value;
+  const street = streetInput.value.trim();
+  const type = typeSelect.value;
+  const radius = parseInt(radiusInput.value,10) || 1000;
+
+  let queryStr = city + " " + district + (street ? " "+street : "");
+
+  showLoading(); setBusy(true); searchInfoEl.textContent='';
+
+  try{
+    shownRestaurantsKeys.clear(); // <-- 每次新搜尋清空已顯示 Set
+
+    const geo = await geocode(queryStr);
+    if(!geo){ alert("找不到位置"); return; }
+    lastSearchCenter = geo;
+
+    allRestaurants = shuffleArray(await findRestaurants(geo.lat, geo.lon, radius, type)); // 先隨機化
+    renderResults(getRandomTop3(allRestaurants)); // <-- 使用 getRandomTop3
+    searchInfoEl.textContent=`找到 ${allRestaurants.length} 間餐廳`;
+    reshuffleBtn.disabled = allRestaurants.length<=3;
+    map.setView([geo.lat,geo.lon],16);
+  }catch(e){ console.error(e); alert("搜尋失敗"); }
+  finally{ hideLoading(); setBusy(false); }
+});
 
 // ----- Helpers -----
 function showLoading(){ loadingEl.style.display = "flex"; }
@@ -273,9 +339,25 @@ function renderResults(restaurants){
                       ${rating ? `<p class="card-sub">評價：${rating} (OSM)</p>` : ''}`;
     const right = document.createElement("div"); right.className = "card-actions";
 
-    const btnView = document.createElement("button"); btnView.textContent = "顯示在地圖"; btnView.onclick = ()=>{ map.setView([lat,lon],17); marker.openPopup(); };
-    const btnMaps = document.createElement("button"); btnMaps.textContent = "在 Google Maps 開啟"; btnMaps.onclick = ()=>{ openUrlSmart(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name+' '+address)}`); };
-    const btnNav = document.createElement("button"); btnNav.textContent = "導航"; btnNav.onclick = ()=>{ openUrlSmart(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`); };
+    const btnView = document.createElement("button");
+btnView.textContent = "顯示在地圖";
+btnView.onclick = ()=>{
+  map.setView([lat, lon], 17);
+  marker.openPopup();
+};
+
+const btnMaps = document.createElement("button");
+btnMaps.textContent = "在 Google Maps 開啟";
+btnMaps.onclick = ()=>{
+  openUrlSmart(`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`);
+};
+
+
+const btnNav = document.createElement("button");
+btnNav.textContent = "導航";
+btnNav.onclick = ()=>{
+  openUrlSmart(`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`);
+};
 
     right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
     card.appendChild(left); card.appendChild(right);
@@ -321,13 +403,6 @@ streetInput.addEventListener('keydown', (e)=>{
 document.addEventListener('click', (e)=>{ if(!streetInput.contains(e.target)) streetSuggestions.innerHTML=''; });
 function updateSuggestionHighlight(){ suggestionItems.forEach((el,i)=>{ if(i===selectedSuggestionIndex){ el.classList.add('highlight'); el.scrollIntoView({block:'nearest'}); }else{ el.classList.remove('highlight'); } }); }
 
-// ----- reshuffle top 3 -----
-reshuffleBtn.addEventListener('click', ()=>{ 
-  if(!allRestaurants || allRestaurants.length===0) return;
-  const shuffled = allRestaurants.slice().sort(()=>Math.random()-0.5).slice(0,3);
-  renderResults(shuffled);
-});
-
 // ----- 智能定位 -----
 locateBtn.addEventListener('click', ()=>{
   if(navigator.geolocation){
@@ -336,31 +411,15 @@ locateBtn.addEventListener('click', ()=>{
 });
 
 // ----- searchBtn -----
-searchBtn.addEventListener('click', async ()=>{
-  const city = citySelect.value;
-  const district = districtSelect.value;
-  const street = streetInput.value.trim();
-  const type = typeSelect.value;
-  const radius = parseInt(radiusInput.value,10) || 1000;
 
-  let queryStr = city + " " + district + (street ? " "+street : "");
-
-  showLoading(); setBusy(true); searchInfoEl.textContent='';
-
-  try{
-    const geo = await geocode(queryStr);
-    if(!geo){ alert("找不到位置"); return; }
-    lastSearchCenter = geo;
-
-    allRestaurants = await findRestaurants(geo.lat, geo.lon, radius, type);
-    allRestaurants.sort((a,b)=>distance(a.lat||a.center.lat,a.lon||a.center.lon,geo.lat,geo.lon)-distance(b.lat||b.center.lat,b.lon||b.center.lon,geo.lat,geo.lon));
-    renderResults(allRestaurants.slice(0,3));
-    searchInfoEl.textContent=`找到 ${allRestaurants.length} 間餐廳`;
-    reshuffleBtn.disabled = allRestaurants.length<=3;
-    map.setView([geo.lat,geo.lon],16);
-  }catch(e){ console.error(e); alert("搜尋失敗"); }
-  finally{ hideLoading(); setBusy(false); }
-});
+function shuffleArray(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
 
 // ----- radius slider -----
 radiusInput.addEventListener('input', ()=>{ radiusLabel.textContent = radiusInput.value; });
