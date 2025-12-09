@@ -1,4 +1,6 @@
-/* script.js - 完整前端版本，LocationIQ + Nominatim + Overpass 多段判斷 */
+/* script.js - 使用 constants.js 拆分的完整版 */
+import { taiwanData, mapping } from './constants.js';
+
 const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd"; // <- 換成你的 key
 const LOCATIONIQ_RETRY = 2;
 const NOMINATIM_RETRY = 2;
@@ -9,31 +11,7 @@ const OVERPASS_SERVERS = [
   "https://overpass.openstreetmap.fr/api/interpreter"
 ];
 
-/* ----- 台灣縣市區完整清單 ----- */
-const taiwanData = {"台北市":["中正區","大同區","中山區","松山區","大安區","萬華區","信義區","士林區","北投區","內湖區","南港區","文山區"],
-  "新北市":["萬里區","金山區","板橋區","汐止區","深坑區","石碇區","瑞芳區","平溪區","雙溪區","貢寮區","新店區","坪林區","烏來區","永和區","中和區","土城區","三峽區","樹林區","鶯歌區","三重區","新莊區","泰山區","林口區","蘆洲區","五股區","八里區","淡水區","三芝區","石門區"],
-  "基隆市":["仁愛區","中正區","信義區","中山區","安樂區","暖暖區","七堵區"],
-  "桃園市":["中壢區","平鎮區","龍潭區","楊梅區","新屋區","觀音區","桃園區","龜山區","八德區","大溪區","復興區","大園區","蘆竹區"],
-  "新竹市":["東區","北區","香山區"],
-  "新竹縣":["竹北市","湖口鄉","新豐鄉","新埔鎮","關西鎮","芎林鄉","寶山鄉","竹東鎮","五峰鄉","橫山鄉","尖石鄉","北埔鄉","峨眉鄉"],
-  "苗栗縣":["苗栗市","苑裡鎮","通霄鎮","竹南鎮","頭份市","後龍鎮","卓蘭鎮","大湖鄉","公館鄉","銅鑼鄉","南庄鄉","頭屋鄉","三義鄉","西湖鄉","造橋鄉","三灣鄉","獅潭鄉","泰安鄉"],
-  "台中市":["中區","東區","南區","西區","北區","北屯區","西屯區","南屯區","太平區","大里區","霧峰區","烏日區","豐原區","后里區","石岡區","東勢區","和平區","新社區","潭子區","大雅區","神岡區","大肚區","沙鹿區","龍井區","梧棲區","清水區","大甲區","外埔區","大安區"],
-  "彰化縣":["彰化市","芬園鄉","花壇鄉","秀水鄉","鹿港鎮","福興鄉","線西鄉","和美鎮","伸港鄉","員林市","社頭鄉","永靖鄉","埔心鄉","溪湖鎮","大村鄉","埔鹽鄉","田中鎮","北斗鎮","田尾鄉","埤頭鄉","溪州鄉","竹塘鄉","二林鎮","大城鄉","芳苑鄉","二水鄉"],
-  "南投縣":["南投市","中寮鄉","草屯鎮","國姓鄉","埔里鎮","仁愛鄉","名間鄉","集集鎮","水里鄉","魚池鄉","信義鄉","竹山鎮","鹿谷鄉"],
-  "雲林縣":["斗六市","斗南鎮","虎尾鎮","西螺鎮","土庫鎮","北港鎮","古坑鄉","大埤鄉","莿桐鄉","林內鄉","二崙鄉","崙背鄉","麥寮鄉","東勢鄉","褒忠鄉","臺西鄉","元長鄉","四湖鄉","口湖鄉","水林鄉"],
-  "嘉義市":["東區","西區"],
-  "嘉義縣":["太保市","朴子市","布袋鎮","大林鎮","民雄鄉","溪口鄉","新港鄉","六腳鄉","東石鄉","義竹鄉","鹿草鄉","水上鄉","中埔鄉","竹崎鄉","梅山鄉","番路鄉","大埔鄉","阿里山鄉"],
-  "台南市":["中西區","東區","南區","北區","安平區","安南區","永康區","歸仁區","新化區","左鎮區","玉井區","楠西區","南化區","仁德區","關廟區","龍崎區","官田區","麻豆區","佳里區","西港區","七股區","將軍區","學甲區","北門區","新營區","後壁區","白河區","東山區","六甲區","下營區","柳營區","鹽水區","善化區","大內區","山上區","新市區","安定區"],
-  "高雄市":["新興區","前金區","苓雅區","鹽埕區","鼓山區","旗津區","前鎮區","三民區","楠梓區","小港區","左營區","仁武區","大社區","岡山區","路竹區","阿蓮區","田寮區","燕巢區","橋頭區","梓官區","彌陀區","永安區","湖內區","鳳山區","大寮區","林園區","鳥松區","大樹區","旗山區","美濃區","六龜區","內門區","杉林區","甲仙區","桃源區","那瑪夏區","茂林區","茄萣區"],
-  "屏東縣":["屏東市","潮州鎮","東港鎮","恆春鎮","萬丹鄉","長治鄉","麟洛鄉","九如鄉","里港鄉","鹽埔鄉","高樹鄉","萬巒鄉","內埔鄉","竹田鄉","新埤鄉","枋寮鄉","新園鄉","崁頂鄉","林邊鄉","南州鄉","佳冬鄉","琉球鄉","車城鄉","滿州鄉","枋山鄉"],
-  "宜蘭縣":["宜蘭市","頭城鎮","礁溪鄉","壯圍鄉","員山鄉","羅東鎮","三星鄉","大同鄉","五結鄉","冬山鄉","蘇澳鎮","南澳鄉"],
-  "花蓮縣":["花蓮市","新城鄉","秀林鄉","吉安鄉","壽豐鄉","鳳林鎮","光復鄉","豐濱鄉","瑞穗鄉","萬榮鄉","玉里鎮","富里鄉","卓溪鄉"],
-  "台東縣":["台東市","成功鎮","關山鎮","卑南鄉","鹿野鄉","池上鄉","東河鄉","長濱鄉","太麻里鄉","金峰鄉","大武鄉","達仁鄉","綠島鄉","蘭嶼鄉","延平鄉","海端鄉"],
-  "澎湖縣":["馬公市","湖西鄉","白沙鄉","西嶼鄉","望安鄉","七美鄉"],
-  "金門縣":["金城鎮","金湖鎮","金沙鎮","金寧鄉","烈嶼鄉","烏坵鄉"],
-  "連江縣":["南竿鄉","北竿鄉","莒光鄉","東引鄉"]};
-
-/* ----- DOM ----- */
+// ----- DOM -----
 const citySelect = document.getElementById("citySelect");
 const districtSelect = document.getElementById("districtSelect");
 const streetInput = document.getElementById("streetInput");
@@ -46,8 +24,9 @@ const reshuffleBtn = document.getElementById("reshuffleBtn");
 const resultsPanel = document.getElementById("resultsPanel");
 const locateBtn = document.getElementById("locateBtn");
 const loadingEl = document.getElementById("loading");
+const searchInfoEl = document.getElementById("searchInfo");
 
-/* Leaflet map */
+// ----- Leaflet map -----
 let map = L.map("map", { zoomControl:true }).setView([25.033964,121.564468], 13);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
 
@@ -55,8 +34,82 @@ let currentMarkers = [];
 let lastRestaurants = [];
 let userLocation = null;
 let lastSearchCenter = null;
+let allRestaurants = [];
+let networkOnlineCache = null;
+let networkLastCheck = 0;
+let pendingOpenUrl = null;
+const NETWORK_TTL_OK = 15000;
+const NETWORK_TTL_FAIL = 60000;
 
-/* ----- Helper: populate city/district ----- */
+// ----- Helpers -----
+function showLoading(){ loadingEl.style.display = "flex"; }
+function hideLoading(){ loadingEl.style.display = "none"; }
+function setBusy(val){
+  searchBtn.disabled = val;
+  reshuffleBtn.disabled = val;
+  citySelect.disabled = val;
+  districtSelect.disabled = val;
+  streetInput.disabled = val;
+  typeSelect.disabled = val;
+  locateBtn.disabled = val;
+}
+async function fetchWithTimeout(url, opts={}, timeout=10000){
+  const controller = new AbortController();
+  const id = setTimeout(()=>controller.abort(), timeout);
+  try{
+    const r = await fetch(url, { signal: controller.signal, ...opts });
+    clearTimeout(id);
+    return r;
+  }catch(e){
+    clearTimeout(id);
+    throw e;
+  }
+}
+
+// ----- Network check with TTL -----
+async function ensureNetwork(){
+  if(location.protocol === "file:") return true;
+  const now = Date.now();
+  let needCheck = false;
+  if(networkOnlineCache === null) needCheck = true;
+  else if(networkOnlineCache && now - networkLastCheck > NETWORK_TTL_OK) needCheck = true;
+  else if(!networkOnlineCache && now - networkLastCheck > NETWORK_TTL_FAIL) needCheck = true;
+
+  if(needCheck){
+    try{
+      const resp = await fetch("https://www.google.com/favicon.ico", { method: "HEAD", cache: "no-cache" });
+      networkOnlineCache = resp.ok;
+    }catch{
+      networkOnlineCache = false;
+    }
+    networkLastCheck = now;
+  }
+  return networkOnlineCache;
+}
+
+// ----- open URL 智能打開 -----
+async function openUrlSmart(url){
+  if(await ensureNetwork()){
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    if(win) win.focus();
+    pendingOpenUrl = null;
+  }else{
+    if(!pendingOpenUrl){
+      alert("網路似乎有問題，無法開啟 Google Maps，請檢查網路連線。");
+      pendingOpenUrl = url;
+      const retryInterval = setInterval(async ()=>{
+        if(pendingOpenUrl && await ensureNetwork()){
+          const win = window.open(pendingOpenUrl, "_blank", "noopener,noreferrer");
+          if(win) win.focus();
+          pendingOpenUrl = null;
+          clearInterval(retryInterval);
+        }
+      }, 5000);
+    }
+  }
+}
+
+// ----- Populate city/district -----
 (function initCityDistrict(){
   Object.keys(taiwanData).forEach(city=>{
     const o = document.createElement("option"); o.value = city; o.textContent = city;
@@ -74,7 +127,7 @@ let lastSearchCenter = null;
   citySelect.dispatchEvent(new Event("change"));
 })();
 
-/* ----- Restaurant types dropdown ----- */
+// ----- Restaurant types dropdown -----
 const typeOptions = [
   { label: "全部", value: "" },
   { label: "餐廳 (restaurant)", value: "restaurant" },
@@ -92,37 +145,9 @@ typeOptions.forEach(opt=>{
   typeSelect.appendChild(o);
 });
 
-/* ----- Utils ----- */
-function showLoading(){ loadingEl.style.display = "flex"; }
-function hideLoading(){ loadingEl.style.display = "none"; }
-function setBusy(val){
-  searchBtn.disabled = val;
-  reshuffleBtn.disabled = val;
-  citySelect.disabled = val;
-  districtSelect.disabled = val;
-  streetInput.disabled = val;
-  typeSelect.disabled = val;
-  locateBtn.disabled = val;
-}
-
-async function fetchWithTimeout(url, opts={}, timeout=10000){
-  const controller = new AbortController();
-  const id = setTimeout(()=>controller.abort(), timeout);
-  try{
-    const r = await fetch(url, { signal: controller.signal, ...opts });
-    clearTimeout(id);
-    return r;
-  }catch(e){
-    clearTimeout(id);
-    throw e;
-  }
-}
-
-/* ----- geocode: LocationIQ + Nominatim fallback ----- */
+// ----- Geocode -----
 async function geocode(query){
   let geo = null;
-
-  // LocationIQ
   for(let attempt=0; attempt<=LOCATIONIQ_RETRY; attempt++){
     try{
       let url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(query)}&format=json&addressdetails=1&countrycodes=TW&limit=3`;
@@ -137,8 +162,6 @@ async function geocode(query){
       if(attempt < LOCATIONIQ_RETRY) await new Promise(res=>setTimeout(res, 400*(attempt+1)));
     }
   }
-
-  // Nominatim fallback
   if(!geo){
     for(let attempt=0; attempt<=NOMINATIM_RETRY; attempt++){
       try{
@@ -155,20 +178,14 @@ async function geocode(query){
       }
     }
   }
-
   if(!geo) return null;
-
-  // 精準門牌 fallback 街道
   const hasNumber = /\d/.test(query);
   const geocodedHasHouseNumber = geo.raw && geo.raw.address && (geo.raw.address.house_number || geo.raw.address.housenumber || geo.raw.address.house_no);
-  if(hasNumber && !geocodedHasHouseNumber){
-    geo.fallbackToStreet = true;
-  }
-
+  if(hasNumber && !geocodedHasHouseNumber) geo.fallbackToStreet = true;
   return geo;
 }
 
-/* ----- Overpass query with retries ----- */
+// ----- Overpass query -----
 async function overpassQuery(query){
   let lastErr = null;
   for(const endpoint of OVERPASS_SERVERS){
@@ -188,104 +205,33 @@ async function overpassQuery(query){
   throw lastErr || new Error('All overpass failed');
 }
 
-/* ----- findRestaurants with filters & dedup ----- */
-async function findRestaurants(lat, lon, radius = 1000, type = ''){
+// ----- findRestaurants -----
+async function findRestaurants(lat, lon, radius=1000, type=''){
   const filters = [];
-  const mapping = {"restaurant":[
-    `node["amenity"="restaurant"]`, `way["amenity"="restaurant"]`, `relation["amenity"="restaurant"]`,
-    `node["cuisine"]`, `way["cuisine"]`, `relation["cuisine"]`
-  ],
-  "fast_food":[
-    `node["amenity"="fast_food"]`, `way["amenity"="fast_food"]`, `relation["amenity"="fast_food"]`,
-    `node["shop"="fast_food"]`, `way["shop"="fast_food"]`, `relation["shop"="fast_food"]`,
-    `node["cuisine"="burger"]`, `node["cuisine"="pizza"]`, `node["cuisine"="sandwich"]`,
-    `way["cuisine"="burger"]`, `way["cuisine"="pizza"]`, `way["cuisine"="sandwich"]`,
-    `relation["cuisine"="burger"]`, `relation["cuisine"="pizza"]`, `relation["cuisine"="sandwich"]`
-  ],
-  "cafe":[
-    `node["amenity"="cafe"]`, `way["amenity"="cafe"]`, `relation["amenity"="cafe"]`,
-    `node["shop"="coffee"]`, `way["shop"="coffee"]`, `relation["shop"="coffee"]`,
-    `node["cuisine"="coffee"]`, `way["cuisine"="coffee"]`, `relation["cuisine"="coffee"]`
-  ],
-  "bar":[
-    `node["amenity"="bar"]`, `way["amenity"="bar"]`, `relation["amenity"="bar"]`,
-    `node["shop"="wine"]`, `way["shop"="wine"]`, `relation["shop"="wine"]`,
-    `node["cuisine"="beer"]`, `way["cuisine"="beer"]`, `relation["cuisine"="beer"]`
-  ],
-  "bakery":[
-    `node["shop"="bakery"]`, `way["shop"="bakery"]`, `relation["shop"="bakery"]`,
-    `node["cuisine"="bread"]`, `way["cuisine"="bread"]`, `relation["cuisine"="bread"]`
-  ],
-  "ice_cream":[
-    `node["shop"="ice_cream"]`, `way["shop"="ice_cream"]`, `relation["shop"="ice_cream"]`,
-    `node["cuisine"="ice_cream"]`, `way["cuisine"="ice_cream"]`, `relation["cuisine"="ice_cream"]`
-  ],
-  "food_court":[
-    `node["amenity"="food_court"]`, `way["amenity"="food_court"]`, `relation["amenity"="food_court"]`,
-    `node["shop"="food_court"]`, `way["shop"="food_court"]`, `relation["shop"="food_court"]`
-  ],
-  "takeaway":[
-    `node["shop"="takeaway"]`, `way["shop"="takeaway"]`, `relation["shop"="takeaway"]`,
-    `node["amenity"="takeaway"]`, `way["amenity"="takeaway"]`, `relation["amenity"="takeaway"]`
-  ],
-  "beverages":[
-    `node["shop"="beverages"]`, `way["shop"="beverages"]`, `relation["shop"="beverages"]`,
-    `node["shop"="coffee"]`, `way["shop"="coffee"]`, `relation["shop"="coffee"]`,
-    `node["amenity"="cafe"]`, `way["amenity"="cafe"]`, `relation["amenity"="cafe"]`,
-    `node["amenity"="bar"]`, `way["amenity"="bar"]`, `relation["amenity"="bar"]`,
-    `node["cuisine"="juice"]`, `way["cuisine"="juice"]`, `relation["cuisine"="juice"]`,
-    `node["cuisine"="tea"]`, `way["cuisine"="tea"]`, `relation["cuisine"="tea"]`,
-    `node["cuisine"="bubble_tea"]`, `way["cuisine"="bubble_tea"]`, `relation["cuisine"="bubble_tea"]`
-  ],
-  "night_snack":[
-    `node["amenity"="fast_food"]`, `way["amenity"="fast_food"]`, `relation["amenity"="fast_food"]`,
-    `node["shop"="food_court"]`, `way["shop"="food_court"]`, `relation["shop"="food_court"]`,
-    `node["shop"="takeaway"]`, `way["shop"="takeaway"]`, `relation["shop"="takeaway"]`
-  ],
-  "dessert":[
-    `node["shop"="ice_cream"]`, `way["shop"="ice_cream"]`, `relation["shop"="ice_cream"]`,
-    `node["shop"="patisserie"]`, `way["shop"="patisserie"]`, `relation["shop"="patisserie"]`,
-    `node["cuisine"="dessert"]`, `way["cuisine"="dessert"]`, `relation["cuisine"="dessert"]`
-  ],
-  "hotpot":[
-    `node["cuisine"="hotpot"]`, `way["cuisine"="hotpot"]`, `relation["cuisine"="hotpot"]`,
-    `node["amenity"="restaurant"]["cuisine"="hotpot"]`, 
-    `way["amenity"="restaurant"]["cuisine"="hotpot"]`, 
-    `relation["amenity"="restaurant"]["cuisine"="hotpot"]`
-  ]};
   const arr = type ? (mapping[type] || mapping["restaurant"]) : mapping["restaurant"];
   arr.forEach(s=>filters.push(`${s}(around:${radius},${lat},${lon});`));
-
   const q = `[out:json];(${filters.join('')});out center tags;`;
   const data = await overpassQuery(q);
   const elements = data.elements || [];
 
   const seen = new Set();
-  const filtered = elements.filter(e=>{
+  return elements.filter(e=>{
     const t = e.tags || {};
     if(t.disused || t.abandoned || t["disused:amenity"] || t["abandoned:amenity"]) return false;
     if(t.shop === "vacant") return false;
     if(t.closed || t["contact:status"] === "closed") return false;
     if(t.opening_hours && /closed|off|休業|歇業|永久/i.test(t.opening_hours)) return false;
     if(t.name && /歇業|停業|永久|結束營業|closed/i.test(t.name)) return false;
-
     const key = (t.name||"") + "|" + (t["addr:street"]||"") + "|" + (t["addr:housenumber"]||"");
     if(seen.has(key)) return false;
     seen.add(key);
     return true;
   });
-
-  return filtered;
 }
 
-/* ----- clearMarkers & distance ----- */
-function clearMarkers(){
-  currentMarkers.forEach(m=>map.removeLayer(m));
-  currentMarkers = [];
-}
-
-function distance(lat1,lon1,lat2,lon2){
-  const R=6371000; const toRad=Math.PI/180;
+// ----- clearMarkers & distance -----
+function clearMarkers(){ currentMarkers.forEach(m=>map.removeLayer(m)); currentMarkers = []; }
+function distance(lat1,lon1,lat2,lon2){const R=6371000; const toRad=Math.PI/180;
   const φ1=lat1*toRad, φ2=lat2*toRad;
   const Δφ=(lat2-lat1)*toRad, Δλ=(lon2-lon1)*toRad;
   const a=Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
@@ -293,7 +239,7 @@ function distance(lat1,lon1,lat2,lon2){
   return R*c;
 }
 
-/* ----- renderResults ----- */
+// ----- renderResults -----
 function renderResults(restaurants){
   clearMarkers();
   resultsPanel.innerHTML = "";
@@ -302,18 +248,8 @@ function renderResults(restaurants){
     return;
   }
 
-  const ref = userLocation ? { lat:userLocation.lat, lon:userLocation.lon } : (lastSearchCenter || null);
-  let sorted = restaurants.slice();
-  if(ref){
-    sorted.sort((a,b)=>{
-      const aLat = a.lat || a.center?.lat; const aLon = a.lon || a.center?.lon;
-      const bLat = b.lat || b.center?.lat; const bLon = b.lon || b.center?.lon;
-      return distance(ref.lat,ref.lon,aLat,aLon) - distance(ref.lat,ref.lon,bLat,bLon);
-    });
-  }
-
-  lastRestaurants = sorted;
-  const top = sorted.slice(0,3);
+  const top = restaurants.slice(0,3);
+  lastRestaurants = top;
 
   top.forEach(item=>{
     const lat = item.lat || item.center?.lat;
@@ -323,24 +259,23 @@ function renderResults(restaurants){
     const address = (tags["addr:full"] || tags["addr:street"] || tags["addr:housenumber"] || "").toString();
     const hours = tags.opening_hours || "";
     const phone = tags.phone || tags["contact:phone"] || "";
+    const rating = tags.rating || tags['aggregate_rating'] || null;
 
     const marker = L.marker([lat,lon]).addTo(map);
-    marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}`);
+    marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}${rating?'<br>評價：'+rating+' (OSM)': ''}`);
     currentMarkers.push(marker);
 
     const card = document.createElement("div"); card.className = "card";
     const left = document.createElement("div"); left.className = "card-left";
     left.innerHTML = `<p class="card-title">${name}</p>
                       <p class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</p>
-                      <p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>`;
+                      <p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>
+                      ${rating ? `<p class="card-sub">評價：${rating} (OSM)</p>` : ''}`;
     const right = document.createElement("div"); right.className = "card-actions";
 
-    const btnView = document.createElement("button"); btnView.textContent = "顯示在地圖";
-    btnView.onclick = ()=>{ map.setView([lat,lon],17); marker.openPopup(); };
-    const btnMaps = document.createElement("button"); btnMaps.textContent = "在 Google Maps 開啟";
-    btnMaps.onclick = ()=> { window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + address)}`,"_blank"); };
-    const btnNav = document.createElement("button"); btnNav.textContent = "導航";
-    btnNav.onclick = ()=> { window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`,"_blank"); };
+    const btnView = document.createElement("button"); btnView.textContent = "顯示在地圖"; btnView.onclick = ()=>{ map.setView([lat,lon],17); marker.openPopup(); };
+    const btnMaps = document.createElement("button"); btnMaps.textContent = "在 Google Maps 開啟"; btnMaps.onclick = ()=>{ openUrlSmart(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name+' '+address)}`); };
+    const btnNav = document.createElement("button"); btnNav.textContent = "導航"; btnNav.onclick = ()=>{ openUrlSmart(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`); };
 
     right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
     card.appendChild(left); card.appendChild(right);
@@ -348,8 +283,7 @@ function renderResults(restaurants){
   });
 }
 
-/* ----- 街道 autocomplete ----- */
-/* ----- Street autocomplete with LocationIQ (display full address, include house number when available) ----- */
+// ----- Street autocomplete -----
 let selectedSuggestionIndex = -1;
 let suggestionItems = [];
 
@@ -357,209 +291,76 @@ streetInput.addEventListener('input', async ()=>{
   const city = citySelect.value;
   const district = districtSelect.value;
   const q = streetInput.value.trim();
-  if(!q){ streetSuggestions.innerHTML = ''; suggestionItems = []; selectedSuggestionIndex=-1; return; }
+  if(!q){ streetSuggestions.innerHTML=''; suggestionItems=[]; selectedSuggestionIndex=-1; return; }
 
   try{
-    // use LocationIQ search to obtain address suggestions (display_name)
     let url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(city+' '+district+' '+q)}&format=json&addressdetails=1&countrycodes=TW&limit=6`;
-    if(userLocation){
-      // bound to nearby box to prioritize nearby suggestions
-      const delta = 0.05;
-      url += `&viewbox=${userLocation.lon-delta},${userLocation.lat-delta},${userLocation.lon+delta},${userLocation.lat+delta}&bounded=1`;
-    }
     const r = await fetchWithTimeout(url);
-    if(!r.ok) throw new Error('LocationIQ suggestion error');
-    const j = await r.json();
-    streetSuggestions.innerHTML = '';
-    suggestionItems = [];
+    const j = r.ok ? await r.json() : [];
+    streetSuggestions.innerHTML=''; suggestionItems=[];
     j.forEach(item=>{
-      const display = item.display_name;
-      if(!display) return;
-      const div = document.createElement('div'); 
-      div.className = 'suggestion-item'; 
-      div.textContent = display;
+      const display = item.display_name; if(!display) return;
+      const div = document.createElement('div'); div.className='suggestion-item'; div.textContent=display;
       div.addEventListener('click', ()=>{
-        streetInput.value = display;
-        streetSuggestions.innerHTML = '';
-        suggestionItems = [];
-        selectedSuggestionIndex = -1;
+        streetInput.value=display; streetSuggestions.innerHTML=''; suggestionItems=[]; selectedSuggestionIndex=-1;
+        searchBtn.click();
       });
-      streetSuggestions.appendChild(div);
-      suggestionItems.push(div);
+      streetSuggestions.appendChild(div); suggestionItems.push(div);
     });
-    selectedSuggestionIndex = -1;
-  }catch(e){
-    console.warn("Auto-complete failed", e);
-    streetSuggestions.innerHTML = '';
-    suggestionItems = [];
-    selectedSuggestionIndex = -1;
-  }
+    selectedSuggestionIndex=-1;
+  }catch(e){ streetSuggestions.innerHTML=''; suggestionItems=[]; selectedSuggestionIndex=-1; }
 });
 
 streetInput.addEventListener('keydown', (e)=>{
   if(!suggestionItems.length) return;
-  if(e.key === 'ArrowDown'){
-    e.preventDefault();
-    selectedSuggestionIndex = (selectedSuggestionIndex + 1) % suggestionItems.length;
-    updateSuggestionHighlight();
-  } else if(e.key === 'ArrowUp'){
-    e.preventDefault();
-    selectedSuggestionIndex = (selectedSuggestionIndex - 1 + suggestionItems.length) % suggestionItems.length;
-    updateSuggestionHighlight();
-  } else if(e.key === 'Enter'){
-    if(selectedSuggestionIndex >= 0){
-      e.preventDefault();
-      streetInput.value = suggestionItems[selectedSuggestionIndex].textContent;
-      streetSuggestions.innerHTML = '';
-      suggestionItems = [];
-      selectedSuggestionIndex = -1;
-    }
-  }
+  if(e.key==='ArrowDown'){ e.preventDefault(); selectedSuggestionIndex=(selectedSuggestionIndex+1)%suggestionItems.length; updateSuggestionHighlight(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); selectedSuggestionIndex=(selectedSuggestionIndex-1+suggestionItems.length)%suggestionItems.length; updateSuggestionHighlight(); }
+  else if(e.key==='Enter'){ if(selectedSuggestionIndex>=0){ e.preventDefault(); streetInput.value=suggestionItems[selectedSuggestionIndex].textContent; streetSuggestions.innerHTML=''; suggestionItems=[]; selectedSuggestionIndex=-1; searchBtn.click(); } }
 });
 
-function updateSuggestionHighlight(){
-  suggestionItems.forEach((it, idx)=>{ it.style.background = (idx === selectedSuggestionIndex) ? '#e0f7fa' : ''; });
-}
+document.addEventListener('click', (e)=>{ if(!streetInput.contains(e.target)) streetSuggestions.innerHTML=''; });
+function updateSuggestionHighlight(){ suggestionItems.forEach((el,i)=>{ if(i===selectedSuggestionIndex){ el.classList.add('highlight'); el.scrollIntoView({block:'nearest'}); }else{ el.classList.remove('highlight'); } }); }
 
-document.addEventListener('click', (e)=>{
-  if(!streetInput.contains(e.target)) streetSuggestions.innerHTML = '';
+// ----- reshuffle top 3 -----
+reshuffleBtn.addEventListener('click', ()=>{ 
+  if(!allRestaurants || allRestaurants.length===0) return;
+  const shuffled = allRestaurants.slice().sort(()=>Math.random()-0.5).slice(0,3);
+  renderResults(shuffled);
 });
 
-/* ----- search flow ----- */
-radiusInput.addEventListener('input', ()=>{ radiusLabel.textContent = radiusInput.value; });
+// ----- 智能定位 -----
+locateBtn.addEventListener('click', ()=>{
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{ userLocation={lat:pos.coords.latitude, lon:pos.coords.longitude}; map.setView([userLocation.lat,userLocation.lon],16); }, err=>alert("定位失敗: "+err.message));
+  }else{ alert("瀏覽器不支援定位"); }
+});
 
+// ----- searchBtn -----
 searchBtn.addEventListener('click', async ()=>{
   const city = citySelect.value;
   const district = districtSelect.value;
   const street = streetInput.value.trim();
-  if(!city || !district){ alert("請先選擇縣市與區"); return; }
+  const type = typeSelect.value;
+  const radius = parseInt(radiusInput.value,10) || 1000;
 
-  const query = `${city} ${district}${street ? ' ' + street : ''}`;
+  let queryStr = city + " " + district + (street ? " "+street : "");
 
-  showLoading(); setBusy(true);
-
-  const geo = await geocode(query);
-  if(!geo){
-    hideLoading(); setBusy(false);
-    alert("找不到該地址，請檢查門牌或改成街道搜尋。");
-    return;
-  }
-
-  if(geo.fallbackToStreet){
-    alert("找不到精準門牌，將使用街道中心搜尋附近餐廳。");
-  }
-
-  lastSearchCenter = { lat: geo.lat, lon: geo.lon };
-  const radiusVal = parseInt(radiusInput.value,10);
-  const radius = radiusVal===0 ? 5000 : radiusVal;
+  showLoading(); setBusy(true); searchInfoEl.textContent='';
 
   try{
-    const restaurants = await findRestaurants(geo.lat, geo.lon, radius, typeSelect.value);
-    renderResults(restaurants);
-    map.setView([geo.lat, geo.lon], radius <= 1000 ? 15 : 13);
-  }catch(e){
-    console.error(e);
-    alert("查詢失敗，請稍後再試");
-  }
+    const geo = await geocode(queryStr);
+    if(!geo){ alert("找不到位置"); return; }
+    lastSearchCenter = geo;
 
-  hideLoading(); setBusy(false);
+    allRestaurants = await findRestaurants(geo.lat, geo.lon, radius, type);
+    allRestaurants.sort((a,b)=>distance(a.lat||a.center.lat,a.lon||a.center.lon,geo.lat,geo.lon)-distance(b.lat||b.center.lat,b.lon||b.center.lon,geo.lat,geo.lon));
+    renderResults(allRestaurants.slice(0,3));
+    searchInfoEl.textContent=`找到 ${allRestaurants.length} 間餐廳`;
+    reshuffleBtn.disabled = allRestaurants.length<=3;
+    map.setView([geo.lat,geo.lon],16);
+  }catch(e){ console.error(e); alert("搜尋失敗"); }
+  finally{ hideLoading(); setBusy(false); }
 });
 
-/* ----- reshuffle & locate button ----- */
-reshuffleBtn.addEventListener('click', ()=>{
-  if(!lastRestaurants || lastRestaurants.length === 0) return;
-
-  const shuffled = lastRestaurants.slice().sort(()=>Math.random()-0.5);
-
-  clearMarkers();
-  resultsPanel.innerHTML = "";
-
-  const top = shuffled.slice(0,3);
-  top.forEach(item=>{
-    const lat = item.lat || item.center?.lat;
-    const lon = item.lon || item.center?.lon;
-    const tags = item.tags || {};
-    const name = tags.name || "未提供名稱";
-    const address = (tags["addr:full"] || tags["addr:street"] || tags["addr:housenumber"] || "").toString();
-    const hours = tags.opening_hours || "";
-    const phone = tags.phone || tags["contact:phone"] || "";
-
-    const marker = L.marker([lat,lon]).addTo(map);
-    marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}`);
-    currentMarkers.push(marker);
-
-    const card = document.createElement("div");
-    card.className = "card";
-
-    const left = document.createElement("div");
-    left.className = "card-left";
-    left.innerHTML = `<p class="card-title">${name}</p>
-                      <p class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</p>
-                      <p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>`;
-
-    const right = document.createElement("div");
-    right.className = "card-actions";
-
-    const btnView = document.createElement("button");
-    btnView.textContent = "顯示在地圖";
-    btnView.onclick = ()=>{ map.setView([lat,lon],17); marker.openPopup(); };
-
-    const btnMaps = document.createElement("button");
-    btnMaps.textContent = "在 Google Maps 開啟";
-    btnMaps.onclick = ()=> { 
-      const mapsQuery = encodeURIComponent(name + (address ? ' ' + address : ''));
-      const url = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-      openUrlSmart(url);
-    };
-
-    const btnNav = document.createElement("button");
-    btnNav.textContent = "導航";
-    btnNav.onclick = ()=> {
-      const useOrigin = confirm("是否使用你當前的位置作為起點？（按「取消」則僅顯示目的地）");
-      if(useOrigin){
-        if(!navigator.geolocation){ alert("裝置不支援定位"); return; }
-        navigator.geolocation.getCurrentPosition(pos=>{
-          const sLat = pos.coords.latitude, sLon = pos.coords.longitude;
-          const url = `https://www.google.com/maps/dir/?api=1&origin=${sLat},${sLon}&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
-          openUrlSmart(url);
-        }, err=>{
-          alert("無法取得位置: "+err.message);
-        }, { enableHighAccuracy:true, timeout:10000 });
-      } else {
-        const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat+','+lon)}&travelmode=driving`;
-        openUrlSmart(url);
-      }
-    };
-
-    right.appendChild(btnView);
-    right.appendChild(btnMaps);
-    right.appendChild(btnNav);
-
-    card.appendChild(left);
-    card.appendChild(right);
-    resultsPanel.appendChild(card);
-  });
-});
-
-/* ----- locate button: 取得使用者目前位置 ----- */
-locateBtn.addEventListener('click', ()=>{
-  if(!navigator.geolocation){ alert("您的裝置不支援定位"); return; }
-
-  locateBtn.disabled = true;
-  locateBtn.textContent = "定位中…";
-
-  navigator.geolocation.getCurrentPosition(pos=>{
-    userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-    L.marker([userLocation.lat, userLocation.lon], { title: "您的位置" }).addTo(map);
-    map.setView([userLocation.lat, userLocation.lon], 14);
-    locateBtn.textContent = "已定位";
-  }, err=>{
-    alert("定位失敗：" + err.message);
-    locateBtn.disabled = false;
-    locateBtn.textContent = "取得我的位置";
-  }, { enableHighAccuracy:true, timeout:10000 });
-});
-
-/* ----- 初始化 radius label & enable controls ----- */
-radiusLabel.textContent = radiusInput.value;
-setBusy(false);
+// ----- radius slider -----
+radiusInput.addEventListener('input', ()=>{ radiusLabel.textContent = radiusInput.value; });
