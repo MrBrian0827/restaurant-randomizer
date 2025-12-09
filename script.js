@@ -171,30 +171,24 @@ async function ensureNetwork(){
   return networkOnlineCache;
 }
 
-// ----- open URL 智能打開 -----
-// 每個 URL 都獨立重試，不阻止後續點擊
-async function openUrlSmart(url){
+// ----- open URL 智能打開 (兼容手機 iOS/Android) -----
+async function openUrlSmart(url) {
+  // 1️⃣ 立即使用者互動觸發彈窗
+  const win = window.open(url, "_blank", "noopener,noreferrer");
+  if (!win) {
+    alert("瀏覽器阻擋了彈窗，請允許彈窗以開啟 Google Maps 或導航。");
+    return;
+  }
+  win.focus();
+
+  // 2️⃣ 非阻塞式檢查網路，失敗則提醒
   try {
-    if(await ensureNetwork()){
-      const win = window.open(url, "_blank", "noopener,noreferrer");
-      if(win) win.focus();
-      return;
+    const ok = await ensureNetwork();
+    if (!ok) {
+      alert("網路似乎有問題，Google Maps 或導航可能無法正常載入。");
     }
-
-    alert("網路似乎有問題，無法開啟 Google Maps，請檢查網路連線。");
-
-    // 失敗時自動重試這個 URL
-    const retryInterval = setInterval(async () => {
-      const online = await ensureNetwork();
-      if(online){
-        const win = window.open(url, "_blank", "noopener,noreferrer");
-        if(win) win.focus();
-        clearInterval(retryInterval);
-      }
-    }, 5000);
-
-  } catch(e){
-    alert("無法開啟連結: " + e.message);
+  } catch {
+    // 可忽略 fetch 錯誤
   }
 }
 
@@ -376,13 +370,11 @@ btnMaps.onclick = () => {
   let url = '';
   let showWarning = false;
 
-  // 有完整地址 → 精準搜尋
   if (tags.name && (tags["addr:full"] || (tags["addr:street"] && tags["addr:housenumber"]))) {
     const streetPart = (tags["addr:full"] || (tags["addr:street"] + ' ' + (tags["addr:housenumber"] || ''))).trim();
     const query = encodeURIComponent(`${streetPart}, ${districtSelect.value}, ${citySelect.value}`);
     url = `https://www.google.com/maps/search/?api=1&query=${query}`;
   } else {
-    // 沒完整地址 → 只能用經緯度，Google Maps 搜尋可能不顯示名稱
     const query = encodeURIComponent(`${lat},${lon}`);
     url = `https://www.google.com/maps/search/?api=1&query=${query}`;
     showWarning = true;
@@ -401,15 +393,15 @@ btnNav.textContent = "導航";
 btnNav.onclick = () => {
   let destination = '';
   if (tags["addr:full"] || (tags["addr:street"] && tags["addr:housenumber"])) {
-    // 用完整地址
     const streetPart = (tags["addr:full"] || (tags["addr:street"] + ' ' + (tags["addr:housenumber"] || ''))).trim();
     destination = encodeURIComponent(`${streetPart}, ${districtSelect.value}, ${citySelect.value}`);
   } else {
-    // 用經緯度
     destination = encodeURIComponent(`${lat},${lon}`);
   }
-  // travelmode 可以換成 driving / walking / bicycling / transit
-  openUrlSmart(`https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`);
+
+  // 可改 travelmode: driving / walking / bicycling / transit
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
+  openUrlSmart(url);
 };
 
     right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
