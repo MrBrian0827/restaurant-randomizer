@@ -1,192 +1,105 @@
-台灣餐廳隨機推薦器 🇹🇼🍽️
+# 台灣餐廳隨機推薦系統 🍽️
 
-一個基於 LocationIQ / Nominatim（地理編碼）以及 Overpass API（OSM 餐廳資料）的網頁工具，讓你可依照「縣市 → 區 → 街道（可選） → 店家類型 → 搜尋半徑」來查詢附近餐廳，並自動從結果中挑選 三間距離最近的店家。
+這是一個使用 OpenStreetMap / Overpass API 與 LocationIQ / Nominatim 的網頁系統，可以在台灣範圍內：
 
-支援
+- 查詢指定縣市、鄉鎮街道的餐廳
+- 隨機推薦 3 間餐廳
+- 在地圖上顯示餐廳位置
+- 開啟 Google Maps 精準搜尋或導航
+- 支援光模式與暗模式切換
 
-🔍 地址自動完成（街道 / 門牌）
+---
 
-📍 使用者定位
+## 功能特色
 
-🗺️ Leaflet 地圖標示
+- **隨機推薦**：每次搜尋會隨機顯示 3 間餐廳，且不會重複顯示相同名稱與類型的餐廳。
+- **地圖顯示**：整合 Leaflet.js，可直接在地圖上查看餐廳位置，點擊卡片可聚焦餐廳。
+- **Google Maps 支援**：
+  - 精準搜尋完整地址的餐廳
+  - 導航到餐廳位置（使用經緯度或地址）
+  - 提示使用者若餐廳未提供名稱或地址
+- **光/暗模式**：使用者可切換介面模式。
+- **街道自動完成**：輸入街道名稱會提供即時建議。
+- **智能網路檢查**：若網路異常，系統會提示，並自動嘗試重試開啟 Google Maps。
 
-🔁 重新抽選三家（不需重新查詢 Overpass）
+---
 
-🧭 多個 Overpass API 端點自動備援
+## 技術棧
 
-🧹 過濾「歇業」「停業」「廢棄」等店家
+- **前端**：HTML / CSS / JavaScript
+- **地圖與定位**：
+  - [Leaflet.js](https://leafletjs.com/)
+  - OpenStreetMap tiles
+- **API**：
+  - [Overpass API](https://overpass-api.de/) - 查詢餐廳資料
+  - [LocationIQ](https://locationiq.com/) / [Nominatim](https://nominatim.openstreetmap.org/) - 地址地理編碼
+- **樣式**：
+  - CSS Variables 控制光模式 / 暗模式
 
-🌐 Demo
+---
 
-（你可以放 GitHub Pages / Vercel 連結）
+## 安裝與使用
 
-📂 專案結構
-project/
-│── index.html     # 主頁面
-│── style.css      # UI 與版面配置
-│── script.js      # 主邏輯：地理編碼 / Overpass / 地圖 / 介面
-└── README.md
+1. 將專案 clone 或下載到本地：
 
-✨ 功能特色
-1. 地址查詢（LocationIQ → Nominatim Fallback）
+```bash
+git clone https://github.com/你的帳號/專案名稱.git
+cd 專案名稱
 
-優先使用 LocationIQ
+2. 將 script.js 中的 LocationIQ API key 改成你的： 
+const API_KEY = "你的 LocationIQ Key";
 
-如果失敗，自動換成 Nominatim
+3. 開啟 index.html 即可在瀏覽器使用。
+建議使用 Chrome / Edge / Firefox 等現代瀏覽器。
 
-都失敗則回報 null
 
-2. Overpass API 查餐廳
+使用說明
+選擇縣市與鄉鎮
+下拉選單選擇縣市 → 鄉鎮會自動更新。
 
-依照地點與半徑搜尋
+輸入街道（可選）
+輸入街道名稱會提供自動完成建議。
 
-支援多個類型（餐廳、速食、咖啡、飲料、夜市小吃…）
+選擇餐廳類型（可選）
+可選擇餐廳、速食、咖啡店、甜點等。
 
-有多個 Overpass API server 備援
+設定搜尋半徑（公尺）
+調整 radius slider 決定搜尋範圍。
 
-自動重試與 timeout 中止
+點擊搜尋按鈕
+系統會顯示隨機 3 間餐廳。
 
-3. 自動過濾失效店家
+操作餐廳卡片：
 
-排除以下店家：
+「顯示在地圖」：聚焦該餐廳在地圖上的位置
 
-disused / abandoned
+「在 Google Maps 開啟」：開啟 Google Maps 精準搜尋
 
-name 或 opening_hours 出現「歇業」「停業」「closed」
+「導航」：開啟 Google Maps 導航到餐廳
 
-shop=vacant
+切換光/暗模式
+點擊頁面上的模式切換按鈕即可。
 
-contact:status=closed
+注意事項
+若餐廳未提供名稱或完整地址，Google Maps 可能只會顯示座標。
 
-4. 三家最近的店家推薦
+系統使用公開 API，如大量查詢可能會受到限制。
 
-若使用者按「取得我的位置」，距離以使用者座標排序
+定位功能需使用者授權瀏覽器提供地理位置。
 
-若無，則以搜尋中心排序
+若網路異常，系統會提示並自動嘗試重試開啟 Google Maps。
 
-重新抽選不會再對 API 造成負擔
+改進建議
+可加入更多餐廳類型 mapping
 
-5. 地圖（Leaflet）
+支援更多地理編碼服務或 fallback
 
-顯示搜尋位置、三家推薦餐廳
+優化手機版顯示介面
 
-click marker → 高亮對應卡片
+加入收藏餐廳功能
 
-🚀 使用方式
-1. 放到任意 HTTPS 靜態伺服器
-
-例如：
-
-GitHub Pages
-
-Netlify
-
-Vercel
-
-自己的 nginx
-
-2. 必須設定 LocationIQ API Key
-
-打開 script.js：
-
-const API_KEY = "你的 LocationIQ 金鑰";
-
-
-沒有金鑰會無法使用「街道搜尋」與「地址定位」。
-免費方案每日 5000 次，足夠使用。
-
-🧭 搜尋流程
-(1) 使用者選縣市 → 選區
-
-↓
-
-(2) 可輸入街道 / 門牌（可選，支援建議清單）
-
-↓
-
-(3) 設定搜尋類型 / 半徑
-
-↓
-
-(4) 前往地理編碼（LocationIQ / Nominatim）
-
-↓
-
-(5) 使用中心點至 Overpass API 搜尋餐廳資料
-
-↓
-
-(6) 排除失效店家 → 排序（距離最近）
-
-↓
-
-(7) 顯示前 3 名 + 地圖 Marker
-📦 支援的店家分類（typeSelect）
-類別	OSM 對應欄位
-餐廳 restaurant	amenity=restaurant
-速食 fast_food	amenity=fast_food
-咖啡 cafe	amenity=cafe
-酒吧 bar	amenity=bar
-麵包 bakery	shop=bakery
-甜點 ice_cream/patisserie	shop=ice_cream
-夜市小吃 takeaway	shop=takeaway
-飲料 beverages	shop=beverages
-Food court	amenity=food_court
-全部	amenity=restaurant（預設多樣查詢）
-⚠️ 注意事項
-
-LocationIQ Key 請勿公開放在 GitHub
-
-建議把專案設成 private or 使用 serverless proxy。
-
-Overpass API 若被大量呼叫可能 rate limit
-
-已內建多個 server + 自動重試
-
-過度頻繁仍可能遭拒
-
-輸入門牌地址時
-
-若 OSM 資料不完整，可能需要調整搜尋半徑較大（例如 0 = 全區）
-
-🛠️ 開發 / Build / Deploy
-本機開發
-
-用任何 static server（node、python、VSCode Live Server）
-
-例如：
-
-npx serve .
-
-
-或：
-
-python3 -m http.server
-
-GitHub Pages
-
-把 repo 命名為：
-
-username.github.io
-
-
-直接推上去即可。
-
-Vercel / Netlify
-
-直接把整個資料夾丟上即可（無 build 步驟）。
-
-🙌 License
-
-MIT — Free for any use.
-
-📧 作者
-
-如果你需要：
-
-加上「Google Place API 版本」
-
-加上「美食評價 / 平均消費」
-
-加上「行車時間（OSRM）」
-都可以告訴我，我可以幫你升級。
+授權
+MIT License
+
+作者
+布萊恩
