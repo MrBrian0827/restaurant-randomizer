@@ -374,15 +374,25 @@ btnView.onclick = ()=>{
 const btnMaps = document.createElement("button");
 btnMaps.textContent = "在 Google Maps 開啟";
 btnMaps.onclick = () => {
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   let query = '';
   if (tags.name && (tags["addr:full"] || (tags["addr:street"] && tags["addr:housenumber"]))) {
-    query = encodeURIComponent(`${tags["addr:full"] || tags["addr:street"]} ${tags["addr:housenumber"] || ''}, ${districtSelect.value}, ${citySelect.value}`);
+    query = encodeURIComponent((tags["addr:full"] || (tags["addr:street"] + ' ' + (tags["addr:housenumber"] || ''))).trim());
   } else {
     query = encodeURIComponent(`${lat},${lon}`);
     alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
   }
 
-  openMapsApp(query);
+  let url = '';
+  if (isMobile) {
+    // 手機直接開 Google Maps App
+    url = `geo:${lat},${lon}?q=${query}`;
+  } else {
+    // 桌面打開網頁
+    url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+  }
+
+  openUrlSmart(url);
 };
 
 // ----- 導航按鈕 -----
@@ -391,17 +401,25 @@ btnNav.textContent = "導航";
 btnNav.onclick = () => {
   let destination = '';
   if (tags["addr:full"] || (tags["addr:street"] && tags["addr:housenumber"])) {
-    destination = encodeURIComponent(`${tags["addr:full"] || tags["addr:street"]} ${tags["addr:housenumber"] || ''}, ${districtSelect.value}, ${citySelect.value}`);
+    const streetPart = (tags["addr:full"] || (tags["addr:street"] + ' ' + (tags["addr:housenumber"] || ''))).trim();
+    destination = encodeURIComponent(`${streetPart}, ${districtSelect.value}, ${citySelect.value}`);
   } else {
     destination = encodeURIComponent(`${lat},${lon}`);
   }
 
-  if (isMobile()) {
-    openMapsApp(destination);
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  let url = '';
+  if (isMobile) {
+    // 手機用 App 直接導航
+    url = `google.navigation:q=${destination}`;
   } else {
-    openUrlSmart(`https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`);
+    // 桌面用網頁導航
+    url = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
   }
+
+  openUrlSmart(url);
 };
+
     right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
     card.appendChild(left); card.appendChild(right);
     resultsPanel.appendChild(card);
