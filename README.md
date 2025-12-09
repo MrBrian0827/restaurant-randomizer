@@ -39,7 +39,6 @@
 ---
 
 ## 安裝與使用
-```bash
 1. 將專案 clone 或下載到本地：
 
 2. 將 script.js 中的 LocationIQ API key 改成你的： 
@@ -47,7 +46,6 @@ const API_KEY = "你的 LocationIQ Key";
 
 3. 開啟 index.html 即可在瀏覽器使用。
 建議使用 Chrome / Edge / Firefox 等現代瀏覽器。
-```
 
 ## 使用說明
 1. 選擇縣市與鄉鎮
@@ -67,16 +65,15 @@ const API_KEY = "你的 LocationIQ Key";
 
 6. 操作餐廳卡片：
 
-    「顯示在地圖」：聚焦該餐廳在地圖上的位置
+**「顯示在地圖」**：聚焦該餐廳在地圖上的位置
 
-    「在 Google Maps 開啟」：開啟 Google Maps 精準搜尋
+**「在 Google Maps 開啟」**：開啟 Google Maps 精準搜尋
 
-    「導航」：開啟 Google Maps 導航到餐廳
+**「導航」**：開啟 Google Maps 導航到餐廳
 
-7. 切換光/暗模式
-    點擊頁面上的模式切換按鈕即可。
+7. 切換光/暗模式    點擊頁面上的模式切換按鈕即可。
 
-### 注意事項
+## 注意事項
     若餐廳未提供名稱或完整地址，Google Maps 可能只會顯示座標。
 
     系統使用公開 API，如大量查詢可能會受到限制。
@@ -85,7 +82,7 @@ const API_KEY = "你的 LocationIQ Key";
 
     若網路異常，系統會提示並自動嘗試重試開啟 Google Maps。
 
-### 改進建議
+## 改進建議
     可加入更多餐廳類型 mapping
 
     支援更多地理編碼服務或 fallback
@@ -94,8 +91,8 @@ const API_KEY = "你的 LocationIQ Key";
 
     加入收藏餐廳功能
 
-### 授權
+## 授權
     MIT License
 
-### 作者
+## 作者
     布萊恩
