@@ -170,10 +170,21 @@ async function ensureNetwork(){
   return networkOnlineCache;
 }
 
-// ----- open URL 智能打開 (兼容手機 iOS/Android) -----
 async function openUrlSmart(url) {
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  let openUrl = url;
+
+  if(isMobile){
+    // 嘗試用 App 協議打開
+    if(url.includes("maps.google.com") || url.includes("google.com/maps")){
+      // 導航模式
+      openUrl = url.replace("https://www.google.com/maps/dir/?api=1&destination=", "google.navigation:q=");
+    }
+  }
+
   // 1️⃣ 立即使用者互動觸發彈窗
-  const win = window.open(url, "_blank", "noopener,noreferrer");
+  const win = window.open(openUrl, "_blank", "noopener,noreferrer");
   if (!win) {
     alert("瀏覽器阻擋了彈窗，請允許彈窗以開啟 Google Maps 或導航。");
     return;
@@ -181,14 +192,11 @@ async function openUrlSmart(url) {
   win.focus();
 
   // 2️⃣ 非阻塞式檢查網路，失敗則提醒
-  try {
-    const ok = await ensureNetwork();
-    if (!ok) {
+  ensureNetwork().then(ok=>{
+    if(!ok){
       alert("網路似乎有問題，Google Maps 或導航可能無法正常載入。");
     }
-  } catch {
-    // 可忽略 fetch 錯誤
-  }
+  }).catch(()=>{});
 }
 
 // ----- Populate city/district -----
