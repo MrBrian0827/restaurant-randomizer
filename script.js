@@ -52,7 +52,6 @@ function getRandomTop3(arr){
 
   // 將完整資料先隨機化
   const copy = shuffleArray(fullInfo.concat(partialInfo));
-
   const selected = [];
   const usedKeys = new Set();
 
@@ -363,47 +362,38 @@ btnView.onclick = ()=>{
   marker.openPopup();
 };
 
-// ----- Google Maps 開啟 -----
+// ----- Google Maps 按鈕 -----
 const btnMaps = document.createElement("button");
 btnMaps.textContent = "在 Google Maps 開啟";
 btnMaps.onclick = () => {
-  let url = '';
-  let showWarning = false;
-
+  let query = '';
   if (tags.name && (tags["addr:full"] || (tags["addr:street"] && tags["addr:housenumber"]))) {
-    const streetPart = (tags["addr:full"] || (tags["addr:street"] + ' ' + (tags["addr:housenumber"] || ''))).trim();
-    const query = encodeURIComponent(`${streetPart}, ${districtSelect.value}, ${citySelect.value}`);
-    url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+    query = encodeURIComponent(`${tags["addr:full"] || tags["addr:street"]} ${tags["addr:housenumber"] || ''}, ${districtSelect.value}, ${citySelect.value}`);
   } else {
-    const query = encodeURIComponent(`${lat},${lon}`);
-    url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-    showWarning = true;
-  }
-
-  if (showWarning) {
+    query = encodeURIComponent(`${lat},${lon}`);
     alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
   }
 
-  openUrlSmart(url);
+  openMapsApp(query);
 };
 
-// 導航
+// ----- 導航按鈕 -----
 const btnNav = document.createElement("button");
 btnNav.textContent = "導航";
 btnNav.onclick = () => {
   let destination = '';
   if (tags["addr:full"] || (tags["addr:street"] && tags["addr:housenumber"])) {
-    const streetPart = (tags["addr:full"] || (tags["addr:street"] + ' ' + (tags["addr:housenumber"] || ''))).trim();
-    destination = encodeURIComponent(`${streetPart}, ${districtSelect.value}, ${citySelect.value}`);
+    destination = encodeURIComponent(`${tags["addr:full"] || tags["addr:street"]} ${tags["addr:housenumber"] || ''}, ${districtSelect.value}, ${citySelect.value}`);
   } else {
     destination = encodeURIComponent(`${lat},${lon}`);
   }
 
-  // 可改 travelmode: driving / walking / bicycling / transit
-  const url = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
-  openUrlSmart(url);
+  if (isMobile()) {
+    openMapsApp(destination);
+  } else {
+    openUrlSmart(`https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`);
+  }
 };
-
     right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
     card.appendChild(left); card.appendChild(right);
     resultsPanel.appendChild(card);
@@ -464,6 +454,29 @@ function shuffleArray(arr){
     [a[i],a[j]] = [a[j],a[i]];
   }
   return a;
+}
+
+// ----- 手機 / 作業系統偵測 -----
+function isMobile() {
+  const ua = navigator.userAgent || navigator.vendor || window.opera;
+  return /android/i.test(ua) || /iPad|iPhone|iPod/.test(ua);
+}
+function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent || navigator.vendor || window.opera); }
+function isAndroid() { return /android/i.test(navigator.userAgent || navigator.vendor || window.opera); }
+
+// ----- 開啟 Google Maps App 或 fallback -----
+function openMapsApp(query) {
+  const fallbackUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
+
+  if (isIOS()) {
+    window.location.href = `comgooglemaps://?q=${query}&zoom=16`;
+    setTimeout(() => window.open(fallbackUrl, "_blank"), 500);
+  } else if (isAndroid()) {
+    window.location.href = `intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+    setTimeout(() => window.open(fallbackUrl, "_blank"), 500);
+  } else {
+    window.open(fallbackUrl, "_blank");
+  }
 }
 
 // ----- radius slider -----
