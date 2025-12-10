@@ -359,23 +359,24 @@ function renderResults(restaurants){
     const lon = item.lon || item.center?.lon;
     const tags = item.tags || {};
     const name = tags.name || "未提供名稱";
-    const street = (tags["addr:full"] || ((tags["addr:street"] || '') + ' ' + (tags["addr:housenumber"] || ''))).trim();
+    const address = (tags["addr:full"] || tags["addr:street"] || tags["addr:housenumber"] || "").toString();
     const hours = tags.opening_hours || "";
     const phone = tags.phone || tags["contact:phone"] || "";
     const rating = tags.rating || tags['aggregate_rating'] || null;
 
     const marker = L.marker([lat,lon]).addTo(map);
-    marker.bindPopup(`<b>${name}</b><br>${street || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}${rating?'<br>評價：'+rating+' (OSM)': ''}`);
+    marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}${rating?'<br>評價：'+rating+' (OSM)': ''}`);
     currentMarkers.push(marker);
 
     const card = document.createElement("div"); card.className = "card";
     const left = document.createElement("div"); left.className = "card-left";
     left.innerHTML = `<p class="card-title">${name}</p>
-                      <p class="card-sub">${street || '<span style="color:#999">地址未提供</span>'}</p>
+                      <p class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</p>
                       <p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>
                       ${rating ? `<p class="card-sub">評價：${rating} (OSM)</p>` : ''}`;
     const right = document.createElement("div"); right.className = "card-actions";
 
+    // 顯示在地圖按鈕
     const btnView = document.createElement("button");
     btnView.textContent = "顯示在地圖";
     btnView.onclick = ()=>{
@@ -383,64 +384,56 @@ function renderResults(restaurants){
       marker.openPopup();
     };
 
-    // ----- Google Maps 按鈕 -----
+    // Google Maps 按鈕
     const btnMaps = document.createElement("button");
     btnMaps.textContent = "在 Google Maps 開啟";
     btnMaps.onclick = ()=>{
-      let query = '';
+      const street = tags["addr:full"] || ((tags["addr:street"] || '') + ' ' + (tags["addr:housenumber"] || ''));
+      let query = (name ? name + ' ' : '') + street.trim();
       let showAlert = false;
+      if(!query.trim()) { query = `${lat},${lon}`; showAlert=true; }
 
-      if(name && street){
-        query = encodeURIComponent(`${name} ${street}`);
+      const ua = navigator.userAgent;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+      const isIOS = /iPad|iPhone|iPod/.test(ua);
+      const isAndroid = /android/i.test(ua);
+
+      if(isMobile && isIOS){
+        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標表示。");
+        window.location.href = `comgooglemaps://?q=${encodeURIComponent(query)}&zoom=16`;
+      } else if(isMobile && isAndroid){
+        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標表示。");
+        window.location.href = `intent://maps.google.com/maps?q=${encodeURIComponent(query)}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
       } else {
-        query = `${lat},${lon}`;
-        showAlert = true;
-      }
-
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-      if(isMobile && isIOSDevice){
-        window.location.href = `comgooglemaps://?q=${query}&zoom=16`;
-        setTimeout(()=>{
-          window.location.href = `https://www.google.com/maps/search/?api=1&query=${query}`;
-        }, 600);
-      } else if(isMobile && /android/i.test(navigator.userAgent)){
-        window.location.href = `intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
-        setTimeout(()=>{
-          window.location.href = `https://www.google.com/maps/search/?api=1&query=${query}`;
-        }, 600);
-      } else {
-        window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
-      }
-
-      if(showAlert){
-        alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標表示。");
+        window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank");
       }
     };
 
-    // ----- 導航按鈕 -----
+    // 導航按鈕
     const btnNav = document.createElement("button");
     btnNav.textContent = "導航";
     btnNav.onclick = ()=>{
-      let dest = street ? street + `, ${districtSelect.value}, ${citySelect.value}` : `${lat},${lon}`;
-      dest = encodeURIComponent(dest.trim());
+      let destination = tags["addr:full"] || ((tags["addr:street"] || '') + ' ' + (tags["addr:housenumber"] || ''));
+      destination = destination ? destination + `, ${districtSelect.value}, ${citySelect.value}` : `${lat},${lon}`;
+      destination = destination.trim();
+      let showAlert = false;
+      if(!destination) { destination = `${lat},${lon}`; showAlert=true; }
 
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const ua = navigator.userAgent;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
+      const isIOS = /iPad|iPhone|iPod/.test(ua);
+      const isAndroid = /android/i.test(ua);
 
-      if(isMobile && isIOSDevice){
-        window.location.href = `comgooglemaps://?daddr=${dest}&directionsmode=driving`;
-        setTimeout(() => {
-          window.location.href = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
-        }, 600);
-      } else if(isMobile && /android/i.test(navigator.userAgent)){
-        window.location.href = `intent://maps.google.com/maps?daddr=${dest}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
-        setTimeout(() => {
-          window.location.href = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
-        }, 600);
+      if(isMobile && isIOS){
+        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標導航。");
+        window.location.href = `comgooglemaps://?daddr=${encodeURIComponent(destination)}&directionsmode=driving`;
+      } else if(isMobile && isAndroid){
+        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標導航。");
+        window.location.href = `intent://maps.google.com/maps?daddr=${encodeURIComponent(destination)}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
       } else {
-        window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`, "_blank");
+        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標導航。");
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`, "_blank");
       }
     };
 
