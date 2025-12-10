@@ -359,7 +359,8 @@ function renderResults(restaurants){
     const lon = item.lon || item.center?.lon;
     const tags = item.tags || {};
     const name = tags.name || "未提供名稱";
-    const address = (tags["addr:full"] || tags["addr:street"] || tags["addr:housenumber"] || "").toString();
+    const street = tags["addr:full"] || ((tags["addr:street"] || '') + ' ' + (tags["addr:housenumber"] || ''));
+    const address = street.trim();
     const hours = tags.opening_hours || "";
     const phone = tags.phone || tags["contact:phone"] || "";
     const rating = tags.rating || tags['aggregate_rating'] || null;
@@ -376,7 +377,6 @@ function renderResults(restaurants){
                       ${rating ? `<p class="card-sub">評價：${rating} (OSM)</p>` : ''}`;
     const right = document.createElement("div"); right.className = "card-actions";
 
-    // 顯示在地圖按鈕
     const btnView = document.createElement("button");
     btnView.textContent = "顯示在地圖";
     btnView.onclick = ()=>{
@@ -384,61 +384,60 @@ function renderResults(restaurants){
       marker.openPopup();
     };
 
-    // Google Maps 按鈕
+    // ----- Google Maps 按鈕 -----
     const btnMaps = document.createElement("button");
     btnMaps.textContent = "在 Google Maps 開啟";
-    btnMaps.onclick = ()=>{
-      const street = tags["addr:full"] || ((tags["addr:street"] || '') + ' ' + (tags["addr:housenumber"] || ''));
-      let query = (name ? name + ' ' : '') + street.trim();
-      let showAlert = false;
-      if(!query.trim()) { query = `${lat},${lon}`; showAlert=true; }
+    btnMaps.onclick = () => {
+      const query = (name ? name + ' ' : '') + (address || `${lat},${lon}`);
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const iosMap = `comgooglemaps://?q=${encodeURIComponent(query)}&zoom=16`;
+      const androidMap = `intent://maps.google.com/maps?q=${encodeURIComponent(query)}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+      const desktopMap = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 
-      const ua = navigator.userAgent;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
-      const isIOS = /iPad|iPhone|iPod/.test(ua);
-      const isAndroid = /android/i.test(ua);
+      // debug log
+      console.log(`Google Maps URL for ${name}:`, { iosMap, androidMap, desktopMap });
 
-      if(showAlert) alert("注意：此店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
-
-      if(isMobile && isIOS){
-        window.location.href = `comgooglemaps://?q=${encodeURIComponent(query)}&zoom=16`;
-      } else if(isMobile && isAndroid){
-        window.location.href = `intent://maps.google.com/maps?q=${encodeURIComponent(query)}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+      if (isMobile && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+        window.location.href = iosMap;
+        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+      } else if (isMobile && /Android/i.test(navigator.userAgent)) {
+        window.location.href = androidMap;
+        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
       } else {
-        window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank");
+        window.open(desktopMap, "_blank");
+        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
       }
     };
 
-    // 導航按鈕
+    // ----- 導航按鈕 -----
     const btnNav = document.createElement("button");
     btnNav.textContent = "導航";
-    btnNav.onclick = ()=>{
-      let destination = tags["addr:full"] || ((tags["addr:street"] || '') + ' ' + (tags["addr:housenumber"] || ''));
-      destination = destination ? destination + `, ${districtSelect.value}, ${citySelect.value}` : `${lat},${lon}`;
-      destination = destination.trim();
-      let showAlert = false;
-      if(!destination) { destination = `${lat},${lon}`; showAlert=true; }
+    btnNav.onclick = () => {
+      const dest = address ? address + `, ${districtSelect.value}, ${citySelect.value}` : `${lat},${lon}`;
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const iosNav = `comgooglemaps://?daddr=${encodeURIComponent(dest)}&directionsmode=driving`;
+      const androidNav = `intent://maps.google.com/maps?daddr=${encodeURIComponent(dest)}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+      const desktopNav = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=driving`;
 
-      const ua = navigator.userAgent;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(ua);
-      const isIOS = /iPad|iPhone|iPod/.test(ua);
-      const isAndroid = /android/i.test(ua);
+      // debug log
+      console.log(`Navigation URL for ${name}:`, { iosNav, androidNav, desktopNav });
 
-      if(showAlert) alert("注意：此店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
-
-      if(isMobile && isIOS){
-        window.location.href = `comgooglemaps://?daddr=${encodeURIComponent(destination)}&directionsmode=driving`;
-      } else if(isMobile && isAndroid){
-        window.location.href = `intent://maps.google.com/maps?daddr=${encodeURIComponent(destination)}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+      if (isMobile && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+        window.location.href = iosNav;
+        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+      } else if (isMobile && /Android/i.test(navigator.userAgent)) {
+        window.location.href = androidNav;
+        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
       } else {
-        window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`, "_blank");
+        window.open(desktopNav, "_blank");
+        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
       }
     };
 
-    right.appendChild(btnView);
-    right.appendChild(btnMaps);
+    right.appendChild(btnView); 
+    right.appendChild(btnMaps); 
     right.appendChild(btnNav);
-    card.appendChild(left);
+    card.appendChild(left); 
     card.appendChild(right);
     resultsPanel.appendChild(card);
   });
