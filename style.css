@@ -1,3 +1,6 @@
+/* ===========================
+   Global Variables (default)
+=========================== */
 :root {
   --accent: #e4572e;
   --muted: #6b7280;
@@ -9,6 +12,10 @@
   --input-color: #111111;
 }
 
+/* ===========================
+   Dark Mode Variables
+=========================== */
+html.dark-mode,
 body.dark-mode {
   --bg: #121212;
   --card-bg: #1e1e1e;
@@ -20,15 +27,39 @@ body.dark-mode {
   --input-color: #e0e0e0;
 }
 
-/* Reset & 基本樣式 */
+/* ===========================
+   Base & Fix for White Lines
+=========================== */
 * { box-sizing: border-box; }
-html, body { height:100%; margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans TC","Helvetica Neue",Arial; background: var(--bg); color: var(--text-color); }
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+
+  /* Safe-area fix for iOS */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+
+  /* Unified background (fix white edges) */
+  background: var(--bg);
+  background-color: var(--bg);
+
+  /* Fix iOS Safari bounce white */
+  overscroll-behavior: none;
+
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans TC","Helvetica Neue",Arial;
+  color: var(--text-color);
+}
+
+/* ===========================
+   Layout & Components
+=========================== */
 .app { max-width: 1200px; margin: 12px auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
 .header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 h1 { font-size:22px; margin:0; }
 .small { font-size:13px; color: var(--muted); }
 
-/* Controls */
 .controls { background: var(--card-bg); padding:12px; border-radius:10px; box-shadow: 0 6px 18px rgba(15,23,42,0.06); display:flex; flex-direction:column; gap:8px; }
 .row { display:flex; gap:8px; flex-wrap:wrap; }
 .col { flex:1; min-width:160px; }
@@ -37,12 +68,10 @@ button { padding:10px 14px; border-radius:8px; border:0; background: var(--accen
 button:disabled { opacity:0.6; cursor:not-allowed; }
 .actions-col { display:flex; align-items:flex-end; justify-content:flex-end; }
 
-/* Grid */
 .main-grid { display:grid; grid-template-columns:1fr 380px; gap:12px; }
 .map { height:600px; border-radius:10px; overflow:hidden; box-shadow:0 6px 18px rgba(15,23,42,0.06); }
 .results-panel { background: var(--card-bg); padding:12px; border-radius:10px; box-shadow:0 6px 18px rgba(15,23,42,0.06); display:flex; flex-direction:column; gap:8px; max-height:600px; overflow:auto; }
 
-/* Card */
 .card { background: var(--card-bg); border-radius:8px; padding:10px; border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
 .card-left { display:flex; flex-direction:column; flex:1; min-width:200px; }
 .card-title { font-weight:700; margin:0; color: var(--text-color); }
@@ -56,7 +85,7 @@ body.dark-mode .loading-overlay { background: rgba(0,0,0,0.6); }
 .spinner { width:72px; height:72px; border-radius:50%; border:8px solid rgba(0,0,0,0.06); border-top-color:var(--accent); animation:spin 1s linear infinite; }
 @keyframes spin { to{ transform:rotate(360deg); } }
 
-/* Suggestion box */
+/* Suggestion Box */
 .suggestion-box { position:relative; }
 .suggestions { position:absolute; top:100%; left:0; right:0; background: var(--card-bg); border:1px solid var(--border-color); border-radius:6px; z-index:1000; max-height:200px; overflow-y:auto; }
 .suggestion-item { padding:6px 10px; cursor:pointer; }
@@ -66,7 +95,7 @@ body.dark-mode .suggestion-item:hover { background: #333; }
 /* Locate button */
 .locate { background:#f59e0b; color:#fff; }
 
-/* Mobile layout */
+/* Mobile */
 @media(max-width:900px){
   .main-grid{ grid-template-columns:1fr; }
   .map{ height:420px; }

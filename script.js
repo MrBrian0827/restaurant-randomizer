@@ -173,30 +173,43 @@ async function ensureNetwork(){
 async function openUrlSmart(url) {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-  let openUrl = url;
-
-  if(isMobile){
-    // 嘗試用 App 協議打開
-    if(url.includes("maps.google.com") || url.includes("google.com/maps")){
-      // 導航模式
-      openUrl = url.replace("https://www.google.com/maps/dir/?api=1&destination=", "google.navigation:q=");
-    }
-  }
-
-  // 1️⃣ 立即使用者互動觸發彈窗
-  const win = window.open(openUrl, "_blank", "noopener,noreferrer");
-  if (!win) {
-    alert("瀏覽器阻擋了彈窗，請允許彈窗以開啟 Google Maps 或導航。");
+  // -------------------------
+  // Desktop: 直接開網頁即可，不再額外檢查網路
+  // -------------------------
+  if (!isMobile) {
+    window.open(url, "_blank");
     return;
   }
-  win.focus();
 
-  // 2️⃣ 非阻塞式檢查網路，失敗則提醒
-  ensureNetwork().then(ok=>{
-    if(!ok){
-      alert("網路似乎有問題，Google Maps 或導航可能無法正常載入。");
-    }
-  }).catch(()=>{});
+  // -------------------------
+  // Mobile: 使用 App 優先 → 失敗才 fallback
+  // -------------------------
+  if (isIOS()) {
+    // 先嘗試 Google Maps App
+    window.location.href = url.replace("https://www.google.com/maps", "comgooglemaps://");
+
+    // fallback
+    setTimeout(() => {
+      window.location.href = url;
+    }, 800);
+
+    return;
+  }
+
+  if (isAndroid()) {
+    // Android 用 intent 方式
+    const intentUrl =
+      `intent://maps.google.com/maps?q=${encodeURIComponent(url)}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+
+    window.location.href = intentUrl;
+
+    // fallback
+    setTimeout(() => {
+      window.location.href = url;
+    }, 800);
+
+    return;
+  }
 }
 
 // ----- Populate city/district -----
