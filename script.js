@@ -394,43 +394,44 @@ function renderResults(restaurants){
     btnMaps.onclick = () => {
       let query = '';
       if(address){
-        // 有地址，用經緯度 + 店名
-        query = encodeURIComponent(`${lat},${lon} (${name})`);
+        // 地址 + 店名
+        query = encodeURIComponent(`${name} ${address}`);
       } else {
-        // 無地址
         alert("注意：這個店家沒有完整地址，僅能用經緯度顯示位置，名稱可能無法完整呈現。");
         query = encodeURIComponent(`${lat},${lon}`);
       }
 
-      let url = '';
       if(isMobile && isIOS){
-        url = `comgooglemaps://?q=${query}&zoom=16`;
+        window.location.href = `comgooglemaps://?q=${query}&zoom=16`;
       } else if(isMobile && isAndroid){
-        url = `intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+        window.location.href = `intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
       } else {
-        url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+        // 桌面用新分頁
+        window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
       }
-      window.location.href = url;
     };
 
     // ----- 導航按鈕 -----
     const btnNav = document.createElement("button");
     btnNav.textContent = "導航";
     btnNav.onclick = () => {
-      let destQuery = encodeURIComponent(`${lat},${lon}`);
-      if(!address){
+      let destQuery = '';
+      if(address){
+        // 地址 + 店名導航
+        destQuery = encodeURIComponent(`${name} ${address}`);
+      } else {
         alert("注意：這個店家沒有完整地址，僅能用經緯度導航，名稱可能無法完整呈現。");
+        destQuery = encodeURIComponent(`${lat},${lon}`);
       }
 
-      let url = '';
       if(isMobile && isIOS){
-        url = `comgooglemaps://?daddr=${destQuery}&directionsmode=driving`;
+        window.location.href = `comgooglemaps://?daddr=${destQuery}&directionsmode=driving`;
       } else if(isMobile && isAndroid){
-        url = `intent://maps.google.com/maps?daddr=${destQuery}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+        window.location.href = `intent://maps.google.com/maps?daddr=${destQuery}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
       } else {
-        url = `https://www.google.com/maps/dir/?api=1&destination=${destQuery}&travelmode=driving`;
+        // 桌面用新分頁
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${destQuery}&travelmode=driving`, "_blank");
       }
-      window.location.href = url;
     };
 
     right.appendChild(btnView);
