@@ -384,60 +384,59 @@ function renderResults(restaurants){
       marker.openPopup();
     };
 
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/i.test(navigator.userAgent);
+
     // ----- Google Maps 按鈕 -----
     const btnMaps = document.createElement("button");
     btnMaps.textContent = "在 Google Maps 開啟";
     btnMaps.onclick = () => {
-      const query = (name ? name + ' ' : '') + (address || `${lat},${lon}`);
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const iosMap = `comgooglemaps://?q=${encodeURIComponent(query)}&zoom=16`;
-      const androidMap = `intent://maps.google.com/maps?q=${encodeURIComponent(query)}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
-      const desktopMap = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-
-      // debug log
-      console.log(`Google Maps URL for ${name}:`, { iosMap, androidMap, desktopMap });
-
-      if (isMobile && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
-        window.location.href = iosMap;
-        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
-      } else if (isMobile && /Android/i.test(navigator.userAgent)) {
-        window.location.href = androidMap;
-        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+      let query = '';
+      if(address){
+        // 有地址，用經緯度 + 店名
+        query = encodeURIComponent(`${lat},${lon} (${name})`);
       } else {
-        window.open(desktopMap, "_blank");
-        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+        // 無地址
+        alert("注意：這個店家沒有完整地址，僅能用經緯度顯示位置，名稱可能無法完整呈現。");
+        query = encodeURIComponent(`${lat},${lon}`);
       }
+
+      let url = '';
+      if(isMobile && isIOS){
+        url = `comgooglemaps://?q=${query}&zoom=16`;
+      } else if(isMobile && isAndroid){
+        url = `intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+      } else {
+        url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+      }
+      window.location.href = url;
     };
 
     // ----- 導航按鈕 -----
     const btnNav = document.createElement("button");
     btnNav.textContent = "導航";
     btnNav.onclick = () => {
-      const dest = address ? address + `, ${districtSelect.value}, ${citySelect.value}` : `${lat},${lon}`;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const iosNav = `comgooglemaps://?daddr=${encodeURIComponent(dest)}&directionsmode=driving`;
-      const androidNav = `intent://maps.google.com/maps?daddr=${encodeURIComponent(dest)}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
-      const desktopNav = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=driving`;
-
-      // debug log
-      console.log(`Navigation URL for ${name}:`, { iosNav, androidNav, desktopNav });
-
-      if (isMobile && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
-        window.location.href = iosNav;
-        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
-      } else if (isMobile && /Android/i.test(navigator.userAgent)) {
-        window.location.href = androidNav;
-        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
-      } else {
-        window.open(desktopNav, "_blank");
-        if(!address) alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+      let destQuery = encodeURIComponent(`${lat},${lon}`);
+      if(!address){
+        alert("注意：這個店家沒有完整地址，僅能用經緯度導航，名稱可能無法完整呈現。");
       }
+
+      let url = '';
+      if(isMobile && isIOS){
+        url = `comgooglemaps://?daddr=${destQuery}&directionsmode=driving`;
+      } else if(isMobile && isAndroid){
+        url = `intent://maps.google.com/maps?daddr=${destQuery}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+      } else {
+        url = `https://www.google.com/maps/dir/?api=1&destination=${destQuery}&travelmode=driving`;
+      }
+      window.location.href = url;
     };
 
-    right.appendChild(btnView); 
-    right.appendChild(btnMaps); 
+    right.appendChild(btnView);
+    right.appendChild(btnMaps);
     right.appendChild(btnNav);
-    card.appendChild(left); 
+    card.appendChild(left);
     card.appendChild(right);
     resultsPanel.appendChild(card);
   });
