@@ -398,14 +398,13 @@ function renderResults(restaurants){
       const isIOS = /iPad|iPhone|iPod/.test(ua);
       const isAndroid = /android/i.test(ua);
 
+      if(showAlert) alert("注意：此店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+
       if(isMobile && isIOS){
-        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標表示。");
         window.location.href = `comgooglemaps://?q=${encodeURIComponent(query)}&zoom=16`;
       } else if(isMobile && isAndroid){
-        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標表示。");
         window.location.href = `intent://maps.google.com/maps?q=${encodeURIComponent(query)}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
       } else {
-        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標表示。");
         window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`, "_blank");
       }
     };
@@ -425,14 +424,13 @@ function renderResults(restaurants){
       const isIOS = /iPad|iPhone|iPod/.test(ua);
       const isAndroid = /android/i.test(ua);
 
+      if(showAlert) alert("注意：此店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+
       if(isMobile && isIOS){
-        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標導航。");
         window.location.href = `comgooglemaps://?daddr=${encodeURIComponent(destination)}&directionsmode=driving`;
       } else if(isMobile && isAndroid){
-        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標導航。");
         window.location.href = `intent://maps.google.com/maps?daddr=${encodeURIComponent(destination)}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
       } else {
-        if(showAlert) alert("注意：此店家地址資訊不足，Google Maps 將以座標導航。");
         window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=driving`, "_blank");
       }
     };
