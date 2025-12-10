@@ -359,90 +359,96 @@ function renderResults(restaurants){
     const lon = item.lon || item.center?.lon;
     const tags = item.tags || {};
     const name = tags.name || "未提供名稱";
-    const address = (tags["addr:full"] || tags["addr:street"] || tags["addr:housenumber"] || "").toString();
+    const street = (tags["addr:full"] || ((tags["addr:street"] || '') + ' ' + (tags["addr:housenumber"] || ''))).trim();
     const hours = tags.opening_hours || "";
     const phone = tags.phone || tags["contact:phone"] || "";
     const rating = tags.rating || tags['aggregate_rating'] || null;
 
     const marker = L.marker([lat,lon]).addTo(map);
-    marker.bindPopup(`<b>${name}</b><br>${address || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}${rating?'<br>評價：'+rating+' (OSM)': ''}`);
+    marker.bindPopup(`<b>${name}</b><br>${street || ''}<br>${hours ? '營業時間：'+hours : ''}${phone?'<br>電話：'+phone:''}${rating?'<br>評價：'+rating+' (OSM)': ''}`);
     currentMarkers.push(marker);
 
     const card = document.createElement("div"); card.className = "card";
     const left = document.createElement("div"); left.className = "card-left";
     left.innerHTML = `<p class="card-title">${name}</p>
-                      <p class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</p>
+                      <p class="card-sub">${street || '<span style="color:#999">地址未提供</span>'}</p>
                       <p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>
                       ${rating ? `<p class="card-sub">評價：${rating} (OSM)</p>` : ''}`;
     const right = document.createElement("div"); right.className = "card-actions";
 
     const btnView = document.createElement("button");
-btnView.textContent = "顯示在地圖";
-btnView.onclick = ()=>{
-  map.setView([lat, lon], 17);
-  marker.openPopup();
-};
+    btnView.textContent = "顯示在地圖";
+    btnView.onclick = ()=>{
+      map.setView([lat, lon], 17);
+      marker.openPopup();
+    };
 
-// ----- Google Maps 按鈕 -----
-const btnMaps = document.createElement("button");
-btnMaps.textContent = "在 Google Maps 開啟";
-btnMaps.onclick = () => {
-  const name = tags.name || '';
-  const street = tags["addr:full"] || ((tags["addr:street"] || '') + ' ' + (tags["addr:housenumber"] || ''));
-  const query = encodeURIComponent((name ? name + ' ' : '') + street.trim() || `${lat},${lon}`);
+    // ----- Google Maps 按鈕 -----
+    const btnMaps = document.createElement("button");
+    btnMaps.textContent = "在 Google Maps 開啟";
+    btnMaps.onclick = ()=>{
+      let query = '';
+      let showAlert = false;
 
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if(name && street){
+        query = encodeURIComponent(`${name} ${street}`);
+      } else {
+        query = `${lat},${lon}`;
+        showAlert = true;
+      }
 
-  if (isMobile && isIOS()) {
-    // iOS: 使用 comgooglemaps://
-    window.location.href = `comgooglemaps://?q=${query}&zoom=16`;
-    setTimeout(() => {
-      // fallback 網頁
-      window.location.href = `https://www.google.com/maps/search/?api=1&query=${query}`;
-    }, 800);
-  } else if (isMobile && isAndroid()) {
-    // Android: intent
-    window.location.href = `intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
-    setTimeout(() => {
-      window.location.href = `https://www.google.com/maps/search/?api=1&query=${query}`;
-    }, 800);
-  } else {
-    // 桌面
-    window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
-  }
-};
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-// ----- 導航按鈕 -----
-const btnNav = document.createElement("button");
-btnNav.textContent = "導航";
-btnNav.onclick = () => {
-  let destination = tags["addr:full"] || ((tags["addr:street"] || '') + ' ' + (tags["addr:housenumber"] || ''));
-  destination = destination ? destination + `, ${districtSelect.value}, ${citySelect.value}` : `${lat},${lon}`;
-  destination = encodeURIComponent(destination.trim());
+      if(isMobile && isIOSDevice){
+        window.location.href = `comgooglemaps://?q=${query}&zoom=16`;
+        setTimeout(()=>{
+          window.location.href = `https://www.google.com/maps/search/?api=1&query=${query}`;
+        }, 600);
+      } else if(isMobile && /android/i.test(navigator.userAgent)){
+        window.location.href = `intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+        setTimeout(()=>{
+          window.location.href = `https://www.google.com/maps/search/?api=1&query=${query}`;
+        }, 600);
+      } else {
+        window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
+      }
 
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if(showAlert){
+        alert("注意：這個店家可能只會在 Google Maps 顯示座標位置，名稱可能無法顯示。");
+      }
+    };
 
-  if (isMobile && isIOS()) {
-    // iOS: Google Maps App 導航
-    window.location.href = `comgooglemaps://?daddr=${destination}&directionsmode=driving`;
-    setTimeout(() => {
-      // fallback 網頁
-      window.location.href = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
-    }, 800);
-  } else if (isMobile && isAndroid()) {
-    // Android intent 導航
-    window.location.href = `intent://maps.google.com/maps?daddr=${destination}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
-    setTimeout(() => {
-      window.location.href = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
-    }, 800);
-  } else {
-    // 桌面導航
-    window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`, "_blank");
-  }
-};
+    // ----- 導航按鈕 -----
+    const btnNav = document.createElement("button");
+    btnNav.textContent = "導航";
+    btnNav.onclick = ()=>{
+      let dest = street ? street + `, ${districtSelect.value}, ${citySelect.value}` : `${lat},${lon}`;
+      dest = encodeURIComponent(dest.trim());
 
-    right.appendChild(btnView); right.appendChild(btnMaps); right.appendChild(btnNav);
-    card.appendChild(left); card.appendChild(right);
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+      if(isMobile && isIOSDevice){
+        window.location.href = `comgooglemaps://?daddr=${dest}&directionsmode=driving`;
+        setTimeout(() => {
+          window.location.href = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+        }, 600);
+      } else if(isMobile && /android/i.test(navigator.userAgent)){
+        window.location.href = `intent://maps.google.com/maps?daddr=${dest}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+        setTimeout(() => {
+          window.location.href = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+        }, 600);
+      } else {
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`, "_blank");
+      }
+    };
+
+    right.appendChild(btnView);
+    right.appendChild(btnMaps);
+    right.appendChild(btnNav);
+    card.appendChild(left);
+    card.appendChild(right);
     resultsPanel.appendChild(card);
   });
 }
