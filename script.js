@@ -118,7 +118,33 @@ themeToggleBtn.addEventListener("click", () => {
 // ----- reshuffle top 3 -----
 reshuffleBtn.addEventListener('click', ()=>{ 
   if(!allRestaurants || allRestaurants.length===0) return;
-  renderResults(getRandomTop3(allRestaurants));
+
+  // 重新隨機取三間
+  const top3 = getRandomTop3(allRestaurants);
+
+  // 手機版特殊處理：維持隱藏搜尋欄位
+  if(isMobile()){
+    // 只渲染地圖與三個餐廳，不改變搜尋欄狀態
+    renderResults(top3);
+
+    // 搜尋欄位保持隱藏
+    citySelect.parentElement.style.display = "none";
+    districtSelect.parentElement.style.display = "none";
+    streetInput.parentElement.style.display = "none";
+    typeSelect.parentElement.style.display = "none";
+    radiusInput.parentElement.style.display = "none";
+    searchBtn.style.display = "none";
+
+    // 重新查詢按鈕維持顯示
+    let redoBtn = document.getElementById("redoBtn");
+    if(redoBtn) redoBtn.style.display = "inline-block";
+
+    // reshuffle 按鈕保持可見
+    reshuffleBtn.style.display = "inline-block";
+  } else {
+    // 桌機版直接渲染，不做任何隱藏
+    renderResults(top3);
+  }
 });
 
 searchBtn.addEventListener('click', async () => {
@@ -618,7 +644,7 @@ function renderResults(restaurants){
       boundaryNote = "<br><span style='color:#f39c12'>⚠️ 這間可能在邊界附近，座標可能不完全在本區</span>";
     }
 
-    // ----- 使用原本 Leaflet 預設藍色 marker -----
+    // ----- Leaflet marker -----
     const marker = L.marker([lat,lon]).addTo(map);
     currentMarkers.push(marker);
 
@@ -649,10 +675,9 @@ function renderResults(restaurants){
     btnMaps.onclick = ()=>{
       let query = address ? encodeURIComponent(name + " " + address) : `${lat},${lon}`;
       if(!address) alert("注意：此店家名稱可能無法顯示，將使用經緯度定位");
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if(isMobile && isIOS()){
+      if(isMobile() && isIOS()){
         window.location.href = `comgooglemaps://?q=${query}&zoom=16`;
-      } else if(isMobile && isAndroid()){
+      } else if(isMobile() && isAndroid()){
         window.location.href = `intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
       } else {
         window.open(`https://www.google.com/maps/search/?api=1&query=${query}`,"_blank");
@@ -666,10 +691,9 @@ function renderResults(restaurants){
       let dest = address ? `${address}, ${districtSelect.value}, ${citySelect.value}` : `${lat},${lon}`;
       if(!address) alert("注意：此店家名稱可能無法顯示，將使用經緯度導航");
       dest = encodeURIComponent(dest.trim());
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      if(isMobile && isIOS()){
+      if(isMobile() && isIOS()){
         window.location.href = `comgooglemaps://?daddr=${dest}&directionsmode=driving`;
-      } else if(isMobile && isAndroid()){
+      } else if(isMobile() && isAndroid()){
         window.location.href = `intent://maps.google.com/maps?daddr=${dest}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
       } else {
         window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`,"_blank");
@@ -680,6 +704,44 @@ function renderResults(restaurants){
     card.appendChild(left); card.appendChild(right);
     resultsPanel.appendChild(card);
   });
+
+  // ----- 手機版額外處理 -----
+  if(isMobile()){
+    // 隱藏搜尋欄位
+    citySelect.parentElement.style.display = "none";
+    districtSelect.parentElement.style.display = "none";
+    streetInput.parentElement.style.display = "none";
+    typeSelect.parentElement.style.display = "none";
+    radiusInput.parentElement.style.display = "none";
+    searchBtn.style.display = "none";
+
+    // 顯示重新抽選和重新查詢
+    reshuffleBtn.style.display = "inline-block";
+    let redoBtn = document.getElementById("redoBtn");
+    if(!redoBtn){
+      redoBtn = document.createElement("button");
+      redoBtn.id = "redoBtn";
+      redoBtn.textContent = "重新查詢";
+      redoBtn.style.display = "inline-block";
+      resultsPanel.parentElement.insertBefore(redoBtn, resultsPanel);
+      redoBtn.addEventListener("click", ()=>{
+        // 恢復搜尋欄位
+        citySelect.parentElement.style.display = "";
+        districtSelect.parentElement.style.display = "";
+        streetInput.parentElement.style.display = "";
+        typeSelect.parentElement.style.display = "";
+        radiusInput.parentElement.style.display = "";
+        searchBtn.style.display = "";
+
+        // 隱藏 redo 按鈕自己
+        redoBtn.style.display = "none";
+        // 清空結果
+        resultsPanel.innerHTML = "";
+      });
+    } else {
+      redoBtn.style.display = "inline-block";
+    }
+  }
 }
 
 // ----- Street autocomplete -----
