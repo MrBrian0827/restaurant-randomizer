@@ -574,12 +574,15 @@ async function handleSearch() {
     map.setView([geo.lat,geo.lon],16);
   } catch(e){
     console.error(e); alert("搜尋失敗"); 
-  } finally { hideLoading(); setBusy(false); 
-    // 搜尋完成後手機版自動收合
-    if(window.innerWidth <= 900 && searchControls){
-      searchControls.classList.add('collapsed');
+  } 
+    finally { 
+      hideLoading(); 
+      setBusy(false); 
+      // 搜尋完成後手機版自動收合
+      if(window.innerWidth <= 900 && searchControls){
+        searchControls.classList.add('collapsed');
+      }
     }
-  }
 }
 
 // ----- renderResults -----
@@ -752,7 +755,7 @@ function isMobile() {
 
 toggleSearchBtn.addEventListener('click', () => {
   if (!isMobile()) return;  // 桌面不折疊
-  searchControls.classList.toggle('collapsed');
+   searchControls.classList.remove('collapsed');  //固定展開
 });
 
 // 視窗大小改變時自動恢復桌面版顯示
