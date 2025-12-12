@@ -26,9 +26,6 @@ const resultsPanel = document.getElementById("resultsPanel");
 const locateBtn = document.getElementById("locateBtn");
 const loadingEl = document.getElementById("loading");
 const searchInfoEl = document.getElementById("searchInfo");
-const searchControls = document.getElementById("search-controls"); // 你在 HTML 加了 id
-
-let toggleSearchBtn = document.getElementById("toggle-search");    // 新增的按鈕
 
 // ----- Leaflet map -----
 let map = L.map("map", { zoomControl:true }).setView([25.033964,121.564468], 13);
@@ -574,15 +571,7 @@ async function handleSearch() {
     map.setView([geo.lat,geo.lon],16);
   } catch(e){
     console.error(e); alert("搜尋失敗"); 
-  } 
-    finally { 
-      hideLoading(); 
-      setBusy(false); 
-      // 搜尋完成後手機版自動收合
-      if(window.innerWidth <= 900 && searchControls){
-        searchControls.classList.add('collapsed');
-      }
-    }
+  } finally { hideLoading(); setBusy(false); }
 }
 
 // ----- renderResults -----
@@ -748,22 +737,6 @@ function shuffleArray(arr){
   }
   return a;
 }
-
-function isMobile() {
-  return window.innerWidth <= 900;
-}
-
-toggleSearchBtn.addEventListener('click', () => {
-  if (!isMobile()) return;  // 桌面不折疊
-   searchControls.classList.remove('collapsed');  //固定展開
-});
-
-// 視窗大小改變時自動恢復桌面版顯示
-window.addEventListener('resize', () => {
-  if (!isMobile()) {
-    searchControls.classList.remove('collapsed');
-  }
-});
 
 // ----- 手機 / 作業系統偵測 -----
 function isMobile() {
