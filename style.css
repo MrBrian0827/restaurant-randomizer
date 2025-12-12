@@ -44,6 +44,24 @@ body {
   overscroll-behavior: none;
 }
 
+/* ===========================\
+    搜尋區折疊控制
+=========================== */
+/* 桌面版預設顯示 */
+#search-controls {
+  display: block;
+}
+
+/* 手機版折疊才隱藏 */
+@media(max-width:900px){
+  #search-controls.collapsed {
+    display: none;
+  }
+}
+@media(min-width:901px){
+  #toggle-search { display: none; }
+}
+
 /* ===========================
    Layout & Components
 =========================== */
@@ -54,8 +72,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: var(--bg); /* 統一背景 */
+  background: var(--bg);
 }
+
 .header {
   display:flex;
   align-items:center;
@@ -63,6 +82,7 @@ body {
   gap:12px;
   flex-wrap:wrap;
 }
+
 h1 { font-size:22px; margin:0; }
 .small { font-size:13px; color: var(--muted); }
 
@@ -78,6 +98,7 @@ h1 { font-size:22px; margin:0; }
 
 .row { display:flex; gap:8px; flex-wrap:wrap; }
 .col { flex:1; min-width:160px; }
+
 select, input {
   width:100%;
   padding:10px;
@@ -86,6 +107,7 @@ select, input {
   background: var(--input-bg);
   color: var(--input-color);
 }
+
 button {
   padding:10px 14px;
   border-radius:8px;
@@ -96,6 +118,7 @@ button {
   font-weight:600;
 }
 button:disabled { opacity:0.6; cursor:not-allowed; }
+
 .actions-col { display:flex; align-items:flex-end; justify-content:flex-end; }
 
 .main-grid {
@@ -109,7 +132,7 @@ button:disabled { opacity:0.6; cursor:not-allowed; }
   border-radius:10px;
   overflow:hidden;
   box-shadow:0 6px 18px rgba(15,23,42,0.06);
-  background: var(--card-bg); /* 統一地圖背景 */
+  background: var(--card-bg);
 }
 
 .results-panel {
@@ -136,6 +159,7 @@ button:disabled { opacity:0.6; cursor:not-allowed; }
   gap:12px;
   flex-wrap:wrap;
 }
+
 .card-left { display:flex; flex-direction:column; flex:1; min-width:200px; }
 .card-title { font-weight:700; margin:0; color: var(--text-color); }
 .card-sub { font-size:13px; color: var(--muted); margin-top:4px; }
