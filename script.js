@@ -667,7 +667,22 @@ function renderResults(restaurants){
     // ----- 顯示在地圖 -----
     const btnView = document.createElement("button");
     btnView.textContent = "顯示在地圖";
-    btnView.onclick = ()=>{ map.setView([lat, lon], 17); marker.openPopup(); };
+    btnView.onclick = ()=>{
+      map.setView([lat, lon], 17);
+      marker.openPopup();
+
+    // 手機版自動滾動到地圖，並留 20px 空白
+      if(isMobile()){
+        const mapEl = document.getElementById("map");
+        if(mapEl){
+          const topOffset = 20; // 上方留 20px
+          const rect = mapEl.getBoundingClientRect();
+          const scrollTop = window.scrollY || window.pageYOffset;
+          const targetY = rect.top + scrollTop - topOffset;
+          window.scrollTo({ top: targetY, behavior: "smooth" });
+        }
+      }
+    };
 
     // ----- Google Maps -----
     const btnMaps = document.createElement("button");
