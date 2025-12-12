@@ -26,8 +26,11 @@ const resultsPanel = document.getElementById("resultsPanel");
 const locateBtn = document.getElementById("locateBtn");
 const loadingEl = document.getElementById("loading");
 const searchInfoEl = document.getElementById("searchInfo");
+const countrySelect = document.getElementById("countrySelect"); // 新增國家選擇
 
 // ----- Leaflet map -----
+let currentMapping = mapping; // 預設台灣
+let currentCountry = countrySelect.value; // "tw" 或 "jp"
 let map = L.map("map", { zoomControl:true }).setView([25.033964,121.564468], 13);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:'&copy; OpenStreetMap contributors' }).addTo(map);
 
@@ -46,50 +49,26 @@ const NETWORK_TTL_FAIL = 60000;
 function getRandomTop3(arr){
   if(!arr || arr.length === 0) return [];
 
-  // 優先完整資料（有 name 和 address）
-  const fullInfo = arr.filter(r => r.tags?.name && (r.tags["addr:full"] || r.tags["addr:street"] || r.tags["addr:housenumber"]));
-  const partialInfo = arr.filter(r => !r.tags?.name || !(r.tags["addr:full"] || r.tags["addr:street"] || r.tags["addr:housenumber"]));
+  // 先隨機打亂陣列
+  const shuffled = shuffleArray(arr);
 
-  const copy = shuffleArray(fullInfo.concat(partialInfo));
+  // 取前三
+  const top3 = shuffled.slice(0,3);
 
-  const selected = [];
-  const usedKeys = new Set();
+  // 如果有 polygon，判斷每個是否在 polygon 內
+  const polygonGeo = lastSearchCenter?.raw?.geojson;
+  top3.forEach(r => {
+    const lat = r.lat || r.center?.lat;
+    const lon = r.lon || r.center?.lon;
 
-  // 判斷是否為邊界餐廳
-  function isBoundary(r){
-    const addrDistrict = (r.tags["addr:district"] || r.tags["addr:suburb"] || r.tags["addr:village"] || "").trim();
-    const polygonGeo = lastSearchCenter.raw.geojson;
-    const inPolygon = polygonGeo ? pointInPolygon([r.lon || r.center?.lon, r.lat || r.center?.lat], polygonGeo) : true;
-    return addrDistrict !== districtSelect.value || !inPolygon;
-  }
-
-  // 先放非邊界餐廳
-  for(const r of copy){
-    if(selected.length >= 3) break;
-    if(isBoundary(r)) continue;
-    const t = r.tags || {};
-    const typeTag = t.amenity || t.shop || t.leisure || "restaurant";
-    const key = (t.name || "") + "|" + typeTag;
-    if(usedKeys.has(key)) continue;
-    selected.push(r);
-    usedKeys.add(key);
-  }
-
-  // 不夠再補邊界餐廳
-  if(selected.length < 3){
-    for(const r of copy){
-      if(selected.length >= 3) break;
-      if(!isBoundary(r)) continue;
-      const t = r.tags || {};
-      const typeTag = t.amenity || t.shop || t.leisure || "restaurant";
-      const key = (t.name || "") + "|" + typeTag;
-      if(usedKeys.has(key)) continue;
-      selected.push(r);
-      usedKeys.add(key);
+    if(polygonGeo && lat != null && lon != null){
+      r.isBoundary = !pointInPolygon([lon, lat], polygonGeo);
+    } else {
+      r.isBoundary = false;
     }
-  }
+  });
 
-  return selected;
+  return top3;
 }
 
 const themeToggleBtn = document.getElementById("themeToggle");
@@ -147,107 +126,18 @@ reshuffleBtn.addEventListener('click', ()=>{
   }
 });
 
-searchBtn.addEventListener('click', async () => {
-  const city = citySelect.value;
-  const district = districtSelect.value;
-  const street = streetInput.value.trim();
-  const type = typeSelect.value;
-
-  showLoading();
-  setBusy(true);
-  searchInfoEl.textContent = '';
-
-  try {
-    shownRestaurantsKeys.clear(); // 每次新搜尋清空 Set
-
-    if (!city || !district) {
-      alert("請選擇縣市與區域");
-      return;
-    }
-
-    let geo = null;
-    const hasStreet = street.length > 0;
-    const queryStr = city + " " + district + (hasStreet ? " " + street : "");
-
-    geo = await geocode(queryStr);
-    if (!geo) {
-      alert("找不到位置，請確認輸入的地址是否正確。");
-      return;
-    }
-
-    map.setView([geo.lat, geo.lon], hasStreet ? 16 : 12);
-
-    // ----- 地址比對提示（有街道才檢查） -----
-    if (hasStreet) {
-      const addr = geo.raw.address || {};
-      let mismatch = false;
-
-      const cityMatch = city.includes(addr.city || addr.town || addr.county || "");
-      const districtMatch = district.includes(addr.suburb || addr.village || addr.district || "");
-      const geoStreet = addr.road || "";
-      const distance = levenshtein(street.replace(/\s/g, ''), geoStreet.replace(/\s/g, ''));
-      const streetMatch = distance <= Math.floor(Math.max(street.length, geoStreet.length) * 0.3);
-
-      if (!cityMatch || !districtMatch || !streetMatch) mismatch = true;
-
-      if (mismatch) {
-        const proceed = confirm(
-          "查到的位置與輸入地址可能不一致，建議確認後再搜尋。\n\n" +
-          `輸入: ${queryStr}\n查到: ${(addr.road || "")}, ${(addr.suburb || addr.district || "")}, ${(addr.city || addr.town || addr.county || "")}`
-        );
-        if (!proceed) {
-          hideLoading();
-          setBusy(false);
-          return;
-        }
-      }
-    }
-
-    // ----- 設定查詢半徑 -----
-    const radius = hasStreet ? 2000 : 0; // 街道級別使用 2km, 行政區使用 0 表示全區查詢
-
-    lastSearchCenter = geo;
-    allRestaurants = shuffleArray(await findRestaurants(geo.lat, geo.lon, radius, type));
-    renderResults(getRandomTop3(allRestaurants));
-    searchInfoEl.textContent = `找到 ${allRestaurants.length} 間餐廳`;
-    reshuffleBtn.disabled = allRestaurants.length <= 3;
-
-  } catch (e) {
-    console.error(e);
-    alert("搜尋失敗");
-  } finally {
-    hideLoading();
-    setBusy(false);
-  }
-});
-
-// ----- Levenshtein 距離函數 -----
-function levenshtein(a, b) {
-  if(a.length===0) return b.length;
-  if(b.length===0) return a.length;
-  const matrix = [];
-  for(let i=0;i<=b.length;i++){ matrix[i] = [i]; }
-  for(let j=0;j<=a.length;j++){ matrix[0][j] = j; }
-
-  for(let i=1;i<=b.length;i++){
-    for(let j=1;j<=a.length;j++){
-      if(b.charAt(i-1)===a.charAt(j-1)){
-        matrix[i][j] = matrix[i-1][j-1];
-      }else{
-        matrix[i][j] = Math.min(
-          matrix[i-1][j-1]+1,
-          matrix[i][j-1]+1,
-          matrix[i-1][j]+1
-        );
-      }
-    }
-  }
-  return matrix[b.length][a.length];
-}
+searchBtn.addEventListener('click', handleSearch);
 
 // ----- Helpers -----
-function showLoading(){ loadingEl.style.display = "flex"; }
-function hideLoading(){ loadingEl.style.display = "none"; }
+// 顯示 loading 遮罩
+function showLoading() {
+  if(loadingEl) loadingEl.classList.add('show');
+}
+// 隱藏 loading 遮罩
+function hideLoading() {
+  if(loadingEl) loadingEl.classList.remove('show');
+}
+// 設定搜尋或 reshuffle 等操作忙碌狀態
 function setBusy(val){
   searchBtn.disabled = val;
   reshuffleBtn.disabled = val;
@@ -257,14 +147,15 @@ function setBusy(val){
   typeSelect.disabled = val;
   locateBtn.disabled = val;
 }
+// fetch 包裝，避免超時
 async function fetchWithTimeout(url, opts={}, timeout=10000){
   const controller = new AbortController();
   const id = setTimeout(()=>controller.abort(), timeout);
-  try{
+  try {
     const r = await fetch(url, { signal: controller.signal, ...opts });
     clearTimeout(id);
     return r;
-  }catch(e){
+  } catch(e) {
     clearTimeout(id);
     throw e;
   }
@@ -333,23 +224,79 @@ async function openUrlSmart(url) {
   }
 }
 
-// ----- Populate city/district -----
-(function initCityDistrict(){
-  Object.keys(taiwanData).forEach(city=>{
-    const o = document.createElement("option"); o.value = city; o.textContent = city;
+function populateCitiesAndDistricts(){
+  const country = countrySelect.value; // tw / jp
+  const dataSource = country === "jp" ? window.japanData : window.taiwanData;
+
+  // 清空 citySelect
+  citySelect.innerHTML = "";
+  Object.keys(dataSource).forEach(city=>{
+    const o = document.createElement("option");
+    o.value = city; o.textContent = city;
     citySelect.appendChild(o);
   });
-  citySelect.addEventListener("change", ()=>{
-    const city = citySelect.value;
-    districtSelect.innerHTML = "";
-    (taiwanData[city] || []).forEach(d => {
-      const o = document.createElement("option"); o.value = d; o.textContent = d;
+
+  // 選擇第一個城市
+  citySelect.selectedIndex = 0;
+  populateDistricts(dataSource, citySelect.value);
+}
+
+function populateDistricts(dataSource, city){
+  districtSelect.innerHTML = "";
+
+  const districts = dataSource[city];
+  if(!districts || districts.length===0){
+    const o = document.createElement("option");
+    o.value = city;
+    o.textContent = city;
+    districtSelect.appendChild(o);
+  } else {
+    districts.forEach(d=>{
+      const o = document.createElement("option");
+      o.value = d; o.textContent = d;
       districtSelect.appendChild(o);
     });
-  });
-  citySelect.selectedIndex = 0;
-  citySelect.dispatchEvent(new Event("change"));
-})();
+  }
+}
+
+// 初始化
+populateCitiesAndDistricts();
+
+// 當使用者切換國家
+const appTitle = document.getElementById("appTitle");
+
+countrySelect.addEventListener("change", () => {
+  const newCountry = countrySelect.value;
+  currentCountry = newCountry;
+
+  populateCitiesAndDistricts(); // 重新載入城市資料
+
+  // 如果切換到日本，提醒使用者
+  if (newCountry === "jp") {
+    alert("⚠️ 日本地區資料可能不完整，部分城市或餐廳資訊缺失");
+  }
+
+  // 更新頁面標題
+  const titleEl = document.querySelector(".header h1");
+  if(titleEl){
+    titleEl.textContent = newCountry === "tw" ? "台灣餐廳隨機推薦器" : "日本餐廳隨機推薦器";
+  }
+
+  // 清空搜尋欄與結果
+  streetInput.value = "";
+  streetSuggestions.innerHTML = "";
+  resultsPanel.innerHTML = "";
+
+  // 重置地圖視角
+  map.setView([25.033964, 121.564468], 13); // 預設台灣台北
+});
+
+// 當使用者切換城市
+citySelect.addEventListener("change", ()=>{
+  const country = countrySelect.value;
+  const dataSource = country === "jp" ? window.japanData : window.taiwanData;
+  populateDistricts(dataSource, citySelect.value);
+});
 
 // ----- Restaurant types dropdown -----
 const typeOptions = [
@@ -370,63 +317,47 @@ typeOptions.forEach(opt=>{
 });
 
 // ----- Geocode -----
-async function geocode(query){
-  let geo = null;
-  for(let attempt=0; attempt<=LOCATIONIQ_RETRY; attempt++){
-    try{
-      let url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(query)}&format=json&addressdetails=1&countrycodes=TW&limit=3`;
-      const r = await fetchWithTimeout(url, {}, 8000);
-      if(!r.ok) throw new Error('LocationIQ bad response');
+async function geocode(query) {
+  try {
+    // 使用 LocationIQ
+    const url = `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=3`;
+    const r = await fetchWithTimeout(url, {}, 8000);
+    if(r.ok){
       const j = await r.json();
-      if(Array.isArray(j) && j.length>0){
-        geo = { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
-        break;
-      }
-    }catch(e){
-      if(attempt < LOCATIONIQ_RETRY) await new Promise(res=>setTimeout(res, 400*(attempt+1)));
+      if(j.length>0) return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
     }
-  }
-  if(!geo){
-    for(let attempt=0; attempt<=NOMINATIM_RETRY; attempt++){
-      try{
-        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=TW&limit=3&q=${encodeURIComponent(query)}`;
-        const r = await fetchWithTimeout(url, { headers: { "Accept": "application/json" } }, 8000);
-        if(!r.ok) throw new Error('Nominatim bad response');
-        const j = await r.json();
-        if(Array.isArray(j) && j.length>0){
-          geo = { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
-          break;
-        }
-      }catch(e){
-        if(attempt < NOMINATIM_RETRY) await new Promise(res=>setTimeout(res, 400*(attempt+1)));
-      }
+  } catch(e){ console.warn("LocationIQ failed, fallback to Nominatim"); }
+
+  try {
+    // 使用 Nominatim fallback
+    const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(query)}&limit=3`;
+    const r = await fetchWithTimeout(url, { headers: {"Accept":"application/json"} }, 8000);
+    if(r.ok){
+      const j = await r.json();
+      if(j.length>0) return { lat: parseFloat(j[0].lat), lon: parseFloat(j[0].lon), raw: j[0] };
     }
-  }
-  if(!geo) return null;
-  const hasNumber = /\d/.test(query);
-  const geocodedHasHouseNumber = geo.raw && geo.raw.address && (geo.raw.address.house_number || geo.raw.address.housenumber || geo.raw.address.house_no);
-  if(hasNumber && !geocodedHasHouseNumber) geo.fallbackToStreet = true;
-  return geo;
+  } catch(e){ console.warn("Nominatim failed:", e); }
+
+  return null; // 都失敗就回 null
 }
 
 // ----- Overpass query -----
 async function overpassQuery(query){
-  let lastErr = null;
   for(const endpoint of OVERPASS_SERVERS){
-    for(let attempt=0; attempt<OVERPASS_RETRY; attempt++){
-      try{
-        const r = await fetchWithTimeout(endpoint, { method:'POST', headers:{ 'Content-Type':'application/x-www-form-urlencoded' }, body: query }, 15000);
-        if(!r.ok){ lastErr = new Error(`Overpass ${endpoint} status ${r.status}`); await new Promise(res=>setTimeout(res,500*(attempt+1))); continue; }
-        const txt = await r.text();
-        if(typeof txt === 'string' && txt.trim().startsWith('<')){ lastErr = new Error('Overpass returned HTML error'); await new Promise(res=>setTimeout(res,300*(attempt+1))); continue; }
-        return JSON.parse(txt);
-      }catch(e){
-        lastErr = e;
-        await new Promise(res=>setTimeout(res,300*(attempt+1)));
-      }
-    }
+    try {
+      const r = await fetchWithTimeout(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: query
+      }, 15000);
+
+      const text = await r.text();
+      if(text.trim().startsWith('<')) continue; // HTML error, skip
+      return JSON.parse(text);
+    } catch(e){ console.warn("Overpass attempt failed:", e); }
   }
-  throw lastErr || new Error('All overpass failed');
+  console.warn("All Overpass servers failed");
+  return { elements: [] }; // 不再 throw
 }
 
 // ----- 判斷點是否在多邊形 Polygon 內 (ray-casting) -----
@@ -471,7 +402,7 @@ function levenshtein(a, b) {
 }
 
 async function findRestaurants(lat, lon, radius=1000, type='') {
-  const arr = type ? (mapping[type] || mapping["restaurant"]) : mapping["restaurant"];
+  const arr = type ? (currentMapping[type] || currentMapping["restaurant"]) : currentMapping["restaurant"];
 
   // 行政區 bounding box (radius=0 表示整個行政區)
   let bboxFilter = null;
@@ -528,7 +459,10 @@ async function findRestaurants(lat, lon, radius=1000, type='') {
     }
 
     // Polygon 過濾
-    if (polygonGeo && !pointInPolygon([eLon, eLat], polygonGeo)) return;
+    let inPolygon = true;
+    if(polygonGeo) inPolygon = pointInPolygon([eLon, eLat], polygonGeo);
+    const isBoundary = !inPolygon; // 邊界餐廳
+    // 仍加入結果，但標註「可能在邊界」
 
     // 行政區文字比對 + Levenshtein 容錯
     const addrCity = (t["addr:city"] || t["addr:county"] || t["addr:state"] || t["addr:town"] || "").trim();
@@ -564,40 +498,23 @@ function distance(lat1,lon1,lat2,lon2){const R=6371000; const toRad=Math.PI/180;
 
 // ----- 搜尋與候選地址選擇 -----
 async function handleSearch() {
-  const city = citySelect.value;
-  const district = districtSelect.value;
-  const street = streetInput.value.trim();
-  const type = typeSelect.value;
-  const radius = parseInt(radiusInput.value,10) || 1000;
-  if(!city || !district) { alert("請選擇縣市與區域"); return; }
-
-  const queryStr = city + " " + district + (street ? " " + street : "");
-  showLoading(); setBusy(true); searchInfoEl.textContent='';
-
+  showLoading(); setBusy(true);
   try {
-    const geoResults = await geocode(queryStr);
-    if(!geoResults || geoResults.length===0){ alert("找不到位置"); return; }
-
-    // 如果有多筆候選，顯示選擇
-    let geo = geoResults[0];
-    if(geoResults.length > 1){
-      const choice = prompt(
-        "找到多筆地址，請輸入選擇編號:\n" +
-        geoResults.map((g,i)=>`${i+1}. ${g.display_name}`).join("\n")
-      );
-      const idx = parseInt(choice,10)-1;
-      if(idx>=0 && idx<geoResults.length) geo = geoResults[idx];
-    }
+    const queryStr = citySelect.value + " " + districtSelect.value + " " + streetInput.value;
+    const geo = await geocode(queryStr);
+    if(!geo){ alert("找不到位置"); return; }
 
     lastSearchCenter = geo;
-    allRestaurants = shuffleArray(await findRestaurants(geo.lat, geo.lon, radius, type));
-    renderResults(getRandomTop3(allRestaurants));
-    searchInfoEl.textContent=`找到 ${allRestaurants.length} 間餐廳`;
-    reshuffleBtn.disabled = allRestaurants.length<=3;
-    map.setView([geo.lat,geo.lon],16);
-  } catch(e){
-    console.error(e); alert("搜尋失敗"); 
-  } finally { hideLoading(); setBusy(false); }
+    const restaurants = await findRestaurants(geo.lat, geo.lon, parseInt(radiusInput.value)||1000, typeSelect.value);
+    if(restaurants.length===0){
+      resultsPanel.innerHTML = "<div class='small'>找不到符合的餐廳，但可能在附近。</div>";
+    } else {
+      allRestaurants = shuffleArray(restaurants);
+      renderResults(getRandomTop3(allRestaurants));
+    }
+    map.setView([geo.lat, geo.lon], 16);
+  } catch(e){ console.error(e); alert("搜尋失敗"); }
+  finally { hideLoading(); setBusy(false); }
 }
 
 // ----- renderResults -----
@@ -613,14 +530,16 @@ function renderResults(restaurants){
   }
 
   // ----- 畫行政區 polygon -----
-  if(lastSearchCenter?.raw?.geojson){
+  const polygonGeo = lastSearchCenter?.raw?.geojson;
+  if(polygonGeo){
     if(window.currentPolygon) map.removeLayer(window.currentPolygon); // 移除舊 polygon
-    window.currentPolygon = L.geoJSON(lastSearchCenter.raw.geojson, {
+    window.currentPolygon = L.geoJSON(polygonGeo, {
       style: { color: "#f39c12", weight: 2, fillOpacity: 0.0 }
     }).addTo(map);
     map.fitBounds(window.currentPolygon.getBounds());
   }
 
+  // 取得 top3，已包含 isBoundary
   const top = getRandomTop3(restaurants);
   lastRestaurants = top;
 
@@ -634,18 +553,12 @@ function renderResults(restaurants){
     const phone = tags.phone || tags["contact:phone"] || "";
     const rating = tags.rating || tags['aggregate_rating'] || null;
 
-    // ----- 判斷是否邊界餐廳 -----
-    let boundaryNote = "";
-    const addrDistrict = (tags["addr:district"] || tags["addr:suburb"] || tags["addr:village"] || "").trim();
-    const polygonGeo = lastSearchCenter?.raw?.geojson;
-    const inPolygon = polygonGeo ? pointInPolygon([lon, lat], polygonGeo) : true;
-    const isBoundary = addrDistrict !== districtSelect.value || !inPolygon;
-    if (isBoundary) boundaryNote = "<br><span style='color:#f39c12'>⚠️ 這間可能在邊界附近，座標可能不完全在本區</span>";
+    // ----- 邊界標註 -----
+    const boundaryNote = item.isBoundary ? "<br><span style='color:#f39c12'>⚠️ 這間可能在邊界附近，座標可能不完全在本區</span>" : "";
 
     // ----- Leaflet marker -----
     const marker = L.marker([lat,lon]).addTo(map);
     currentMarkers.push(marker);
-
     marker.bindPopup(
       `<b>${name}</b><br>${address || ''}<br>` +
       `${hours ? '營業時間：'+hours : ''}${phone ? '<br>電話：'+phone : ''}${rating ? '<br>評價：'+rating+' (OSM)' : ''}` +
@@ -668,11 +581,9 @@ function renderResults(restaurants){
     btnView.onclick = ()=>{
       map.setView([lat, lon], 17);
       marker.openPopup();
-
       if(isMobile()){
         const mapEl = document.getElementById("map");
         if(mapEl){
-          // 延遲 100ms 確保地圖渲染完成
           setTimeout(()=>{
             const topOffset = 20;
             const rect = mapEl.getBoundingClientRect();
@@ -722,7 +633,6 @@ function renderResults(restaurants){
 
   // ----- 手機版額外處理 -----
   if(isMobile()){
-    // 隱藏搜尋欄位
     citySelect.parentElement.style.display = "none";
     districtSelect.parentElement.style.display = "none";
     streetInput.parentElement.style.display = "none";
@@ -730,7 +640,6 @@ function renderResults(restaurants){
     radiusInput.parentElement.style.display = "none";
     searchBtn.style.display = "none";
 
-    // 顯示重新抽選和重新查詢
     reshuffleBtn.style.display = "inline-block";
     let redoBtn = document.getElementById("redoBtn");
     if(!redoBtn){
@@ -766,7 +675,8 @@ streetInput.addEventListener('input', async ()=>{
   if(!q){ streetSuggestions.innerHTML=''; suggestionItems=[]; selectedSuggestionIndex=-1; return; }
 
   try{
-    let url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(city+' '+district+' '+q)}&format=json&addressdetails=1&countrycodes=TW&limit=6`;
+    const country = countrySelect.value; // tw / jp
+    let url = `https://us1.locationiq.com/v1/search.php?key=${encodeURIComponent(API_KEY)}&q=${encodeURIComponent(city+' '+district+' '+q)}&format=json&addressdetails=1&countrycodes=${country.toUpperCase()}&limit=6`;
     const r = await fetchWithTimeout(url);
     const j = r.ok ? await r.json() : [];
     streetSuggestions.innerHTML=''; suggestionItems=[];
@@ -799,8 +709,6 @@ locateBtn.addEventListener('click', ()=>{
     navigator.geolocation.getCurrentPosition(pos=>{ userLocation={lat:pos.coords.latitude, lon:pos.coords.longitude}; map.setView([userLocation.lat,userLocation.lon],16); }, err=>alert("定位失敗: "+err.message));
   }else{ alert("瀏覽器不支援定位"); }
 });
-
-// ----- searchBtn -----
 
 function shuffleArray(arr){
   const a = arr.slice();
