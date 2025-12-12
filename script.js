@@ -618,7 +618,7 @@ function renderResults(restaurants){
     window.currentPolygon = L.geoJSON(lastSearchCenter.raw.geojson, {
       style: { color: "#f39c12", weight: 2, fillOpacity: 0.0 }
     }).addTo(map);
-    map.fitBounds(window.currentPolygon.getBounds()); // 縮放地圖到區域
+    map.fitBounds(window.currentPolygon.getBounds());
   }
 
   const top = getRandomTop3(restaurants);
@@ -640,9 +640,7 @@ function renderResults(restaurants){
     const polygonGeo = lastSearchCenter?.raw?.geojson;
     const inPolygon = polygonGeo ? pointInPolygon([lon, lat], polygonGeo) : true;
     const isBoundary = addrDistrict !== districtSelect.value || !inPolygon;
-    if (isBoundary) {
-      boundaryNote = "<br><span style='color:#f39c12'>⚠️ 這間可能在邊界附近，座標可能不完全在本區</span>";
-    }
+    if (isBoundary) boundaryNote = "<br><span style='color:#f39c12'>⚠️ 這間可能在邊界附近，座標可能不完全在本區</span>";
 
     // ----- Leaflet marker -----
     const marker = L.marker([lat,lon]).addTo(map);
@@ -654,13 +652,13 @@ function renderResults(restaurants){
       `${boundaryNote}`
     );
 
+    // ----- 建立資訊卡 -----
     const card = document.createElement("div"); card.className = "card";
     const left = document.createElement("div"); left.className = "card-left";
     left.innerHTML = `<p class="card-title">${name}</p>
                       <p class="card-sub">${address || '<span style="color:#999">地址未提供</span>'}</p>
                       <p class="card-sub">${hours ? '營業時間：'+hours : ''}${phone ? ' • 電話：'+phone : ''}</p>
-                      ${rating ? `<p class="card-sub">評價：${rating} (OSM)</p>` : ''}
-                      ${boundaryNote}`;
+                      ${rating ? `<p class="card-sub">評價：${rating} (OSM)</p>` : ''}${boundaryNote}`;
 
     const right = document.createElement("div"); right.className = "card-actions";
 
@@ -671,15 +669,17 @@ function renderResults(restaurants){
       map.setView([lat, lon], 17);
       marker.openPopup();
 
-    // 手機版自動滾動到地圖，並留 20px 空白
       if(isMobile()){
         const mapEl = document.getElementById("map");
         if(mapEl){
-          const topOffset = 20; // 上方留 20px
-          const rect = mapEl.getBoundingClientRect();
-          const scrollTop = window.scrollY || window.pageYOffset;
-          const targetY = rect.top + scrollTop - topOffset;
-          window.scrollTo({ top: targetY, behavior: "smooth" });
+          // 延遲 100ms 確保地圖渲染完成
+          setTimeout(()=>{
+            const topOffset = 20;
+            const rect = mapEl.getBoundingClientRect();
+            const scrollTop = window.scrollY || window.pageYOffset;
+            const targetY = rect.top + scrollTop - topOffset;
+            window.scrollTo({ top: targetY, behavior: "smooth" });
+          }, 100);
         }
       }
     };
@@ -740,17 +740,13 @@ function renderResults(restaurants){
       redoBtn.style.display = "inline-block";
       resultsPanel.parentElement.insertBefore(redoBtn, resultsPanel);
       redoBtn.addEventListener("click", ()=>{
-        // 恢復搜尋欄位
         citySelect.parentElement.style.display = "";
         districtSelect.parentElement.style.display = "";
         streetInput.parentElement.style.display = "";
         typeSelect.parentElement.style.display = "";
         radiusInput.parentElement.style.display = "";
         searchBtn.style.display = "";
-
-        // 隱藏 redo 按鈕自己
         redoBtn.style.display = "none";
-        // 清空結果
         resultsPanel.innerHTML = "";
       });
     } else {
