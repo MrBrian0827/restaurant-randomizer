@@ -188,6 +188,8 @@ reshuffleBtn.addEventListener('click', ()=>{
 });
 
 searchBtn.addEventListener('click', ()=> {
+  usingMyLocation = false;
+  userLocation = null;
   const mode = getCurrentSearchMode();
   let msg = '';
   if(mode === 'city'){
@@ -201,7 +203,6 @@ searchBtn.addEventListener('click', ()=> {
   console.log(msg); // 可改成 alert() 或 toast
   updateSearchInfo();
   updateSearchHint();
-  
   handleSearch();
 });
 
@@ -861,87 +862,81 @@ if(isMobile() && locateBtn) {
   }
 
   locateBtn.addEventListener('click', () => {
-    /* ========= 桌機直接停用 ========= */
-    const isMobile =
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-      window.innerWidth < 768;
+  /* ========= 是否支援定位 ========= */
+  if (!navigator.geolocation) {
+    alert("此瀏覽器不支援定位功能");
+    return;
+  }
 
-    if (!isMobile) {
-      alert("「取得我的位置」僅支援手機，請改用地址搜尋");
-      return;
-    }
+  showLoading();
 
-    /* ========= 瀏覽器是否支援 ========= */
-    if (!navigator.geolocation) {
-      alert("此瀏覽器不支援定位功能");
-      return;
-    }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      hideLoading();
 
-    showLoading();
+      const { latitude, longitude, accuracy } = pos.coords;
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        hideLoading();
+      console.log(
+        "📍 取得我的位置",
+        latitude,
+        longitude,
+        "誤差",
+        accuracy,
+        "m"
+      );
 
-        /* ========= 成功取得位置 ========= */
-        const { latitude, longitude, accuracy } = pos.coords;
-
-        console.log("📍 定位成功：", latitude, longitude, "誤差", accuracy, "m");
-
-        // 若誤差過大，提醒但仍可使用
-        if (accuracy > 300) {
-          alert(
-            `定位誤差約 ${Math.round(accuracy)} 公尺，\n` +
-            `建議移動到戶外或開啟 GPS 後再試一次`
-          );
-        }
-
-        // 設定為「使用我的位置」模式
-        usingMyLocation = true;
-        userLocation = {
-          lat: latitude,
-          lon: longitude
-        };
-
-        /* ========= 清空地址型條件（避免混亂） ========= */
-        streetInput.value = "";
-        citySelect.value = "";
-        districtSelect.value = "";
-
-        /* ========= 地圖移動 ========= */
-        map.setView([latitude, longitude], 16);
-
-        /* ========= 提示文字 ========= */
-        searchInfo.textContent =
-          "📍 使用目前位置搜尋（可調整搜尋半徑）";
-
-        /* ========= 執行搜尋 ========= */
-        handleSearch();
-      },
-
-      (err) => {
-        hideLoading();
-
-        console.error("定位失敗", err);
-
-        let msg = "定位失敗";
-        if (err.code === 1) msg = "使用者拒絕定位權限";
-        if (err.code === 2) msg = "無法取得定位資訊";
-        if (err.code === 3) msg = "定位逾時，請重試";
-
-        alert(msg);
-
-        // ❗失敗時「不要」折疊搜尋條件
-        usingMyLocation = false;
-      },
-
-      {
-        enableHighAccuracy: true, // ⭐ 關鍵：精準 GPS
-        timeout: 15000,
-        maximumAge: 0
+      // 誤差過大僅提醒，不阻止
+      if (accuracy > 500) {
+        alert(
+          `定位誤差約 ${Math.round(accuracy)} 公尺，\n` +
+          `建議移動到戶外或開啟 GPS 以提高精準度`
+        );
       }
-    );
-  });
+
+      /* ========= 啟用「使用我的位置」模式 ========= */
+      usingMyLocation = true;
+      userLocation = {
+        lat: latitude,
+        lon: longitude
+      };
+
+      /* ========= 清空地址搜尋條件 ========= */
+      streetInput.value = "";
+      citySelect.value = "";
+      districtSelect.value = "";
+
+      /* ========= 地圖移動 ========= */
+      map.setView([latitude, longitude], 16);
+
+      searchInfo.textContent = "📍 使用目前位置搜尋（可調整搜尋半徑）";
+
+      handleSearch();
+    },
+
+    (err) => {
+      hideLoading();
+
+      console.error("定位失敗", err);
+
+      let msg = "定位失敗";
+      if (err.code === 1) msg = "使用者拒絕定位權限";
+      if (err.code === 2) msg = "無法取得定位資訊";
+      if (err.code === 3) msg = "定位逾時，請重試";
+
+      alert(msg);
+
+      // ❗失敗時不進入定位模式
+      usingMyLocation = false;
+      userLocation = null;
+    },
+
+    {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0
+    }
+  );
+});
 } else if(locateBtn) {
   locateBtn.style.display = "none"; // 桌機隱藏按鈕
 }
