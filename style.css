@@ -32,8 +32,7 @@ body.dark-mode {
 =========================== */
 * { box-sizing: border-box; }
 
-html,
-body {
+html, body {
   min-height: 100vh;
   margin: 0;
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
@@ -54,8 +53,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: var(--bg); /* 統一背景 */
+  background: var(--bg);
 }
+
 .header {
   display:flex;
   align-items:center;
@@ -63,6 +63,7 @@ body {
   gap:12px;
   flex-wrap:wrap;
 }
+
 h1 { font-size:22px; margin:0; }
 .small { font-size:13px; color: var(--muted); }
 
@@ -78,6 +79,7 @@ h1 { font-size:22px; margin:0; }
 
 .row { display:flex; gap:8px; flex-wrap:wrap; }
 .col { flex:1; min-width:160px; }
+
 select, input {
   width:100%;
   padding:10px;
@@ -86,16 +88,88 @@ select, input {
   background: var(--input-bg);
   color: var(--input-color);
 }
+
+/* ===========================
+   Buttons
+=========================== */
 button {
   padding:10px 14px;
   border-radius:8px;
   border:0;
-  background: var(--accent);
   color:#fff;
   cursor:pointer;
   font-weight:600;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  transition: background-color 0.2s ease,
+              box-shadow 0.2s ease,
+              transform 0.1s ease;
 }
-button:disabled { opacity:0.6; cursor:not-allowed; }
+
+button:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button:disabled { 
+  opacity:0.6; 
+  cursor:not-allowed; 
+}
+
+/* Button Types */
+.btn-primary {
+  background: linear-gradient(135deg, #e4572e, #ff7a4a);
+  font-weight:700;
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+}
+
+.btn-utility {
+  background: linear-gradient(135deg, #10b981, #34d399);
+}
+
+.btn-toggle {
+  background: #e5e7eb;
+  color: #374151;
+  transition: background-color 0.2s ease;
+}
+
+body.dark-mode .btn-toggle {
+  background: #374151;
+  color: #e5e7eb;
+}
+
+.btn-toggle:hover {
+  background: #d1d5db;
+}
+
+body.dark-mode .btn-toggle:hover {
+  background: #4b5563;
+}
+
+/* Emoji Hover Animation */
+button span.emoji {
+  display:inline-block;
+  transition: transform 0.2s ease;
+}
+
+button:hover span.emoji {
+  transform: translateY(-3px);
+}
+
+button:active span.emoji {
+  transform: translateY(0);
+}
+
+/* ===========================
+   Layout Grid & Map
+=========================== */
 .actions-col { display:flex; align-items:flex-end; justify-content:flex-end; }
 
 .main-grid {
@@ -109,7 +183,7 @@ button:disabled { opacity:0.6; cursor:not-allowed; }
   border-radius:10px;
   overflow:hidden;
   box-shadow:0 6px 18px rgba(15,23,42,0.06);
-  background: var(--card-bg); /* 統一地圖背景 */
+  background: var(--card-bg);
 }
 
 .results-panel {
@@ -140,7 +214,36 @@ button:disabled { opacity:0.6; cursor:not-allowed; }
 .card-title { font-weight:700; margin:0; color: var(--text-color); }
 .card-sub { font-size:13px; color: var(--muted); margin-top:4px; }
 .card-actions { display:flex; gap:6px; flex-wrap:wrap; }
-.card-actions button { padding:8px 10px; font-size:14px; flex-shrink:0; }
+.card-actions button {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-right: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+#controlsPanel, .card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+#controlsPanel button {
+  flex-shrink: 0; /* 不被壓縮 */
+}
+
+.card-actions button {
+  flex-shrink: 0;
+  min-width: 100px; /* 防止太窄 */
+}
+
+.btn-map { background-color: #f39c12; color: white; }
+.btn-google { background-color: #2ecc71; color: white; }
+.btn-nav { background-color: #3498db; color: white; }
 
 /* Loading */
 .loading-overlay {
@@ -152,15 +255,16 @@ button:disabled { opacity:0.6; cursor:not-allowed; }
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(3px);
-
-  opacity: 0;             /* 初始透明 */
-  pointer-events: none;   /* 隱藏時不可點擊 */
+  opacity: 0;
+  pointer-events: none;
   transition: opacity 0.3s ease;
 }
+
 body.dark-mode .loading-overlay { background: rgba(0,0,0,0.6); }
+
 .loading-overlay.show {
   opacity: 1;
-  pointer-events: all;    /* 顯示時可點擊 */
+  pointer-events: all;
 }
 
 @keyframes spin { 
@@ -185,15 +289,12 @@ body.dark-mode .loading-overlay { background: rgba(0,0,0,0.6); }
   border:1px solid var(--border-color);
   border-radius:6px;
   z-index:1000;
-  max-height:200px;
+  max-height:300px;
   overflow-y:auto;
 }
 .suggestion-item { padding:6px 10px; cursor:pointer; }
 .suggestion-item:hover { background:#e0f7fa; }
 body.dark-mode .suggestion-item:hover { background: #333; }
-
-/* Locate button */
-.locate { background:#f59e0b; color:#fff; }
 
 /* Mobile */
 @media(max-width:900px){

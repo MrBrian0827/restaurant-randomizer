@@ -59,18 +59,27 @@
 
         <div class="col actions-col">
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="searchBtn">搜尋餐廳</button>
-            <button id="reshuffleBtn" disabled>重新抽選三家</button>
-            <button id="locateBtn" class="locate">取得我的位置</button>
-            <button id="themeToggle">切換模式</button>
+            <button id="searchBtn" class="btn-primary">
+              <span class="emoji">🔍</span> 搜尋餐廳
+            </button>
+
+            <button id="reshuffleBtn" class="btn-secondary" disabled>
+              <span class="emoji">🎲</span> 重新抽選三家
+            </button>
+
+            <button id="locateBtn" class="btn-utility">
+              <span class="emoji">📍</span> 取得我的位置
+            </button>
+
+            <button id="themeToggle" class="btn-toggle">
+              <span class="emoji">🌙</span> 切換模式
+            </button>
           </div>
         </div>
       </div> <!-- end row -->
     </section>
 
     <main class="main-grid">
-      <!-- desktop: left = map, right = results
-           mobile: stacked (results above map) via CSS media queries -->
       <div id="map" class="map"></div>
 
       <aside id="resultsPanel" class="results-panel">
@@ -86,7 +95,7 @@
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-  <!-- 全域常數，先載入 -->
+  <!-- 全域常數 -->
   <script src="constants.js"></script>
 
   <!-- App logic -->
