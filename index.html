@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>餐廳隨機推薦器</title>
+  <title>台灣餐廳隨機推薦器</title>
 
   <link rel="stylesheet" href="style.css" />
   <!-- Leaflet CSS (map) -->
@@ -12,41 +12,30 @@
 <body>
   <div class="app">
     <header class="header">
-      <h1 id="appTitle">台灣餐廳隨機推薦器</h1>
+      <h1>台灣餐廳隨機推薦器</h1>
       <div class="small">LocationIQ (Geocoding) + Nominatim (Fallback) • Overpass (餐廳資料)</div>
     </header>
 
     <section class="controls">
       <div class="row top-row">
         <div class="col">
-          <label for="countrySelect">國家</label>
-          <select id="countrySelect" aria-label="國家">
-            <option value="tw" selected>台灣</option>
-            <option value="jp">日本</option>
-          </select>
-        </div>
-
-        <div class="col">
           <label for="citySelect">縣市</label>
           <select id="citySelect" aria-label="縣市"></select>
         </div>
-
         <div class="col">
           <label for="districtSelect">區</label>
           <select id="districtSelect" aria-label="區"></select>
         </div>
-
         <div class="col suggestion-box" style="min-width:240px;">
           <label for="streetInput">街道 / 門牌（可選）</label>
           <input id="streetInput" placeholder="例如：復興南路一段123號" autocomplete="off" />
           <div id="streetSuggestions" class="suggestions" aria-hidden="true"></div>
         </div>
-
         <div class="col">
           <label for="typeSelect">店家類型</label>
           <select id="typeSelect" aria-label="店家類型"></select>
         </div>
-      </div> <!-- end top-row -->
+      </div>
 
       <div class="row">
         <div class="col" style="min-width:220px;">
@@ -55,50 +44,44 @@
           <div class="small">0 = 全區（表示以區中心或街道中心搜尋較大範圍）</div>
         </div>
 
-        <div id="searchInfo" class="small" style="margin-bottom:6px;"></div>
+<div id="searchInfo" class="small" style="margin-bottom:6px;"></div>
 
         <div class="col actions-col">
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button id="searchBtn" class="btn-primary">
-              <span class="emoji">🔍</span> 搜尋餐廳
-            </button>
-
-            <button id="reshuffleBtn" class="btn-secondary" disabled>
-              <span class="emoji">🎲</span> 重新抽選三家
-            </button>
-
-            <button id="locateBtn" class="btn-utility">
-              <span class="emoji">📍</span> 取得我的位置
-            </button>
-
-            <button id="themeToggle" class="btn-toggle">
-              <span class="emoji">🌙</span> 切換模式
-            </button>
+            <button id="searchBtn">搜尋餐廳</button>
+            <button id="reshuffleBtn" disabled>重新抽選三家</button>
+            <button id="locateBtn" class="locate">取得我的位置</button>
+            <button id="themeToggle">切換模式</button>
           </div>
         </div>
-      </div> <!-- end row -->
+      </div>
     </section>
 
     <main class="main-grid">
+      <!-- desktop: left = map, right = results
+           mobile: stacked (results above map) via CSS media queries -->
       <div id="map" class="map"></div>
 
       <aside id="resultsPanel" class="results-panel">
         <!-- results cards injected here -->
       </aside>
     </main>
-  </div> <!-- end app -->
+  </div>
 
-  <div id="loading" class="loading-overlay">
-    <div class="spinner"></div>
+  <div id="loading" class="loading-overlay" style="display:none;">
+    <div>
+      <div class="spinner"></div>
+      <div style="margin-top:10px;font-weight:600;color:#333;text-align:center;">查詢中，請稍候…</div>
+    </div>
   </div>
 
   <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-  <!-- 全域常數 -->
-  <script src="constants.js"></script>
+<!-- 全域常數，先載入 -->
+<script src="constants.js"></script>
 
-  <!-- App logic -->
-  <script src="script.js"></script>
+<!-- App logic -->
+<script src="script.js"></script>
 </body>
 </html>
