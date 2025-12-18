@@ -820,6 +820,16 @@ function updateSuggestionHighlight(){ suggestionItems.forEach((el,i)=>{ if(i===s
 if(isMobile() && locateBtn) {
   locateBtn.style.display = "inline-block"; // 手機顯示按鈕
 
+  // 建立誤差提示元素
+  let accuracyEl = document.getElementById("accuracyInfo");
+  if(!accuracyEl){
+    accuracyEl = document.createElement("div");
+    accuracyEl.id = "accuracyInfo";
+    accuracyEl.className = "small";
+    accuracyEl.style.marginTop = "4px";
+    locateBtn.parentElement.appendChild(accuracyEl);
+  }
+
   locateBtn.addEventListener('click', () => {
     if(!navigator.geolocation) {
       alert("瀏覽器不支援定位");
@@ -834,6 +844,10 @@ if(isMobile() && locateBtn) {
           lon: pos.coords.longitude
         };
 
+        // 顯示定位誤差
+        const accuracy = pos.coords.accuracy; // 公尺
+        accuracyEl.textContent = `定位精準度：約 ${Math.round(accuracy)} 公尺`;
+
         // 更新地圖
         map.setView([userLocation.lat, userLocation.lon], 16);
 
@@ -842,7 +856,10 @@ if(isMobile() && locateBtn) {
         districtSelect.parentElement.style.display = "none";
         streetInput.parentElement.style.display = "none";
         typeSelect.parentElement.style.display = "none";
-        radiusInput.parentElement.style.display = "none";
+
+        // 讓半徑 slider 可見並可操作
+        radiusInput.parentElement.style.display = "";
+        radiusInput.disabled = false;
         searchBtn.style.display = "none";
 
         updateSearchInfo();
@@ -861,6 +878,7 @@ if(isMobile() && locateBtn) {
           radiusInput.parentElement.style.display = "";
           searchBtn.style.display = "";
           resultsPanel.innerHTML = "";
+          accuracyEl.textContent = ""; // 清除誤差提示
           updateSearchInfo();
           updateSearchHint();
         });
@@ -874,6 +892,17 @@ if(isMobile() && locateBtn) {
 } else if(locateBtn) {
   locateBtn.style.display = "none"; // 桌機隱藏按鈕
 }
+
+// ----- 半徑 slider -----
+// 手機定位後也可操作
+radiusInput.addEventListener('input', () => {
+  radiusLabel.textContent = radiusInput.value;
+  updateSearchInfo();
+  updateSearchHint();
+
+  const mode = getCurrentSearchMode();
+  if(mode === "current" || mode === "street") handleSearch();  // 半徑變更時即時搜尋
+});
 
 function shuffleArray(arr){
   const a = arr.slice();
