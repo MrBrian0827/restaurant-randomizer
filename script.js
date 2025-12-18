@@ -44,6 +44,7 @@ let networkLastCheck = 0;
 let pendingOpenUrl = null;
 let shownRestaurantsKeys = new Set();
 let currentData = window.taiwanData;
+let usingMyLocation = false; // 是否正在使用「我取得我的位置」
 const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
 
@@ -598,30 +599,53 @@ async function handleSearch() {
   updateSearchInfo();
   updateSearchHint();
   showLoading(); setBusy(true);
+
   try {
-    const queryStr = citySelect.value + " " + districtSelect.value + " " + streetInput.value;
-    const geo = await geocode(queryStr);
-    if(!geo){ alert("找不到位置"); return; }
+    let geo = null;
+
+    if(usingMyLocation && userLocation){
+      // 使用「我取得我的位置」的座標
+      geo = { lat: userLocation.lat, lon: userLocation.lon, raw: null };
+    } else {
+      // 使用地址或行政區模式
+      const queryStr = citySelect.value + " " + districtSelect.value + " " + streetInput.value;
+      geo = await geocode(queryStr);
+      if(!geo){
+        alert("找不到位置");
+        return;
+      }
+    }
 
     lastSearchCenter = geo;
-    const restaurants = await findRestaurants(geo.lat, geo.lon, parseInt(radiusInput.value)||1000, typeSelect.value);
+    const restaurants = await findRestaurants(
+      geo.lat,
+      geo.lon,
+      parseInt(radiusInput.value)||1000,
+      typeSelect.value
+    );
+
     if(restaurants.length===0){
       resultsPanel.innerHTML = "<div class='small'>找不到符合的餐廳，但可能在附近。</div>";
     } else {
       allRestaurants = shuffleArray(restaurants);
       renderResults(getRandomTop3(allRestaurants));
     }
+
+    // 設定地圖中心
     map.setView([geo.lat, geo.lon], 16);
-  } catch(e){ console.error(e); alert("搜尋失敗"); }
-  finally { hideLoading(); setBusy(false); }
+
+  } catch(e){
+    console.error(e);
+    alert("搜尋失敗");
+  } finally {
+    hideLoading(); 
+    setBusy(false);
+  }
 }
 
 // ----- renderResults -----
 function renderResults(restaurants){
-  // 先清除舊的 marker
   clearMarkers();
-
-  // 清空結果面板
   resultsPanel.innerHTML = "";
   if(!restaurants || restaurants.length===0){
     resultsPanel.innerHTML = `<div class="small">找不到符合的餐廳。</div>`;
@@ -735,35 +759,39 @@ function renderResults(restaurants){
 
   // ----- 手機版額外處理 -----
 if(isMobile()){
-  citySelect.parentElement.style.display = "none";
-  districtSelect.parentElement.style.display = "none";
-  streetInput.parentElement.style.display = "none";
-  typeSelect.parentElement.style.display = "none";
-  radiusInput.parentElement.style.display = "none";
-  searchBtn.style.display = "none";
-  reshuffleBtn.style.display = "inline-block";
-
-  let redoBtn = document.getElementById("redoBtn");
-    if(!redoBtn){
-      // 建立 redoBtn
-      showRedoButton("重新查詢", ()=>{ 
-        // 顯示搜尋欄位
+    if(!usingMyLocation){
+      // 手機版，非我的位置模式：折疊搜尋欄位，但保留 redoBtn 讓使用者回到條件輸入
+      citySelect.parentElement.style.display = "none";
+      districtSelect.parentElement.style.display = "none";
+      streetInput.parentElement.style.display = "none";
+      typeSelect.parentElement.style.display = "none";
+      radiusInput.parentElement.style.display = "none";
+      searchBtn.style.display = "none";
+      
+      showRedoButton("重新設定搜尋條件", ()=>{ 
         citySelect.parentElement.style.display = "";
         districtSelect.parentElement.style.display = "";
         streetInput.parentElement.style.display = "";
         typeSelect.parentElement.style.display = "";
         radiusInput.parentElement.style.display = "";
         searchBtn.style.display = "";
-
-        // 清空結果面板
         resultsPanel.innerHTML = "";
-
-        // 重置 lastRestaurants
         lastRestaurants = [];
       });
+
+      reshuffleBtn.style.display = "inline-block";
     } else {
-      // 更新 redoBtn 的 onclick 回調
-      redoBtn.onclick = ()=>{ 
+      // 使用「我取得我的位置」模式：折疊搜尋欄位，不提供立即回到條件輸入
+      citySelect.parentElement.style.display = "none";
+      districtSelect.parentElement.style.display = "none";
+      streetInput.parentElement.style.display = "none";
+      typeSelect.parentElement.style.display = "none";
+      radiusInput.parentElement.style.display = "none";
+      searchBtn.style.display = "none";
+
+      showRedoButton("切換回地址搜尋模式", ()=>{
+        usingMyLocation = false;
+        userLocation = null;
         citySelect.parentElement.style.display = "";
         districtSelect.parentElement.style.display = "";
         streetInput.parentElement.style.display = "";
@@ -772,7 +800,9 @@ if(isMobile()){
         searchBtn.style.display = "";
         resultsPanel.innerHTML = "";
         lastRestaurants = [];
-      };
+      });
+
+      reshuffleBtn.style.display = "inline-block";
     }
   }
 }
@@ -831,62 +861,85 @@ if(isMobile() && locateBtn) {
   }
 
   locateBtn.addEventListener('click', () => {
-    if(!navigator.geolocation) {
-      alert("瀏覽器不支援定位");
+    /* ========= 桌機直接停用 ========= */
+    const isMobile =
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      window.innerWidth < 768;
+
+    if (!isMobile) {
+      alert("「取得我的位置」僅支援手機，請改用地址搜尋");
       return;
     }
 
+    /* ========= 瀏覽器是否支援 ========= */
+    if (!navigator.geolocation) {
+      alert("此瀏覽器不支援定位功能");
+      return;
+    }
+
+    showLoading();
+
     navigator.geolocation.getCurrentPosition(
-      pos => {
-        // 使用 GPS 高精準度
+      (pos) => {
+        hideLoading();
+
+        /* ========= 成功取得位置 ========= */
+        const { latitude, longitude, accuracy } = pos.coords;
+
+        console.log("📍 定位成功：", latitude, longitude, "誤差", accuracy, "m");
+
+        // 若誤差過大，提醒但仍可使用
+        if (accuracy > 300) {
+          alert(
+            `定位誤差約 ${Math.round(accuracy)} 公尺，\n` +
+            `建議移動到戶外或開啟 GPS 後再試一次`
+          );
+        }
+
+        // 設定為「使用我的位置」模式
+        usingMyLocation = true;
         userLocation = {
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude
+          lat: latitude,
+          lon: longitude
         };
 
-        // 顯示定位誤差
-        const accuracy = pos.coords.accuracy; // 公尺
-        accuracyEl.textContent = `定位精準度：約 ${Math.round(accuracy)} 公尺`;
+        /* ========= 清空地址型條件（避免混亂） ========= */
+        streetInput.value = "";
+        citySelect.value = "";
+        districtSelect.value = "";
 
-        // 更新地圖
-        map.setView([userLocation.lat, userLocation.lon], 16);
+        /* ========= 地圖移動 ========= */
+        map.setView([latitude, longitude], 16);
 
-        // 隱藏搜尋欄位
-        citySelect.parentElement.style.display = "none";
-        districtSelect.parentElement.style.display = "none";
-        streetInput.parentElement.style.display = "none";
-        typeSelect.parentElement.style.display = "none";
+        /* ========= 提示文字 ========= */
+        searchInfo.textContent =
+          "📍 使用目前位置搜尋（可調整搜尋半徑）";
 
-        // 讓半徑 slider 可見並可操作
-        radiusInput.parentElement.style.display = "";
-        radiusInput.disabled = false;
-        searchBtn.style.display = "none";
-
-        updateSearchInfo();
-        updateSearchHint();
-
-        // 自動搜尋
+        /* ========= 執行搜尋 ========= */
         handleSearch();
+      },
 
-        // 顯示 redoBtn，恢復手動操作
-        showRedoButton("切換回手動搜尋", () => {
-          userLocation = null;
-          citySelect.parentElement.style.display = "";
-          districtSelect.parentElement.style.display = "";
-          streetInput.parentElement.style.display = "";
-          typeSelect.parentElement.style.display = "";
-          radiusInput.parentElement.style.display = "";
-          searchBtn.style.display = "";
-          resultsPanel.innerHTML = "";
-          accuracyEl.textContent = ""; // 清除誤差提示
-          updateSearchInfo();
-          updateSearchHint();
-        });
+      (err) => {
+        hideLoading();
+
+        console.error("定位失敗", err);
+
+        let msg = "定位失敗";
+        if (err.code === 1) msg = "使用者拒絕定位權限";
+        if (err.code === 2) msg = "無法取得定位資訊";
+        if (err.code === 3) msg = "定位逾時，請重試";
+
+        alert(msg);
+
+        // ❗失敗時「不要」折疊搜尋條件
+        usingMyLocation = false;
       },
-      err => {
-        alert("定位失敗: " + err.message);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // 高精準度
+
+      {
+        enableHighAccuracy: true, // ⭐ 關鍵：精準 GPS
+        timeout: 15000,
+        maximumAge: 0
+      }
     );
   });
 } else if(locateBtn) {
