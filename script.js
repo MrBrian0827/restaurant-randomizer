@@ -246,17 +246,20 @@ if(!isMobile()) {
 function collapseSearchControls(showRadius=false) {
   setSearchControlsVisible(false);
 
-  // 只在需要時顯示半徑
+  // radius 只在需要時顯示
   radiusInput.parentElement.style.display = showRadius ? "" : "none";
 
+  // 隱藏搜尋按鈕
   searchBtn.style.display = "none";
-  reshuffleBtn.style.display = "inline-block";
 
+  // reshuffle 按鈕保持可見
+  reshuffleBtn.style.display = "inline-block";
   if(!isMobile()){
     locateBtn.style.display = 'none';
     locateBtn.disabled = true;
   }
 
+  // 重新查詢按鈕
   let redoBtn = document.getElementById("redoBtn");
   if(!redoBtn){
     redoBtn = document.createElement("button");
@@ -265,7 +268,7 @@ function collapseSearchControls(showRadius=false) {
     resultsPanel.parentElement.insertBefore(redoBtn, resultsPanel);
     redoBtn.addEventListener("click", ()=>{
       expandSearchControls();
-      userLocation = null; // 重置定位
+      if(userLocation) userLocation = null; // 重置定位
       resultsPanel.innerHTML = "";
       redoBtn.style.display = "none";
     });
@@ -671,35 +674,35 @@ document.addEventListener('click', (e) => {
 // 修改 handleSearch
 async function handleSearch() {
   const streetQuery = streetInput.value.trim();
-
   // 如果下拉選單還有建議，但使用者還沒確認
   if(suggestionItems.length > 0 && !streetSelectionConfirmed){
     const confirmResult = confirm("偵測到多個相似街道，是否要使用目前輸入的文字進行搜尋？");
-    if(!confirmResult){
+    if(!confirmResult) {
       hideLoading();
       setBusy(false);
       return; // 停止搜尋，讓使用者選
     }
     streetSelectionConfirmed = true; // 使用者確認要直接搜尋
   }
-
+  
   handleStreetDisambiguation(); // 保證即使直接按搜尋也會檢查多條路
-  showLoading(); 
-  setBusy(true);
-
+  showLoading(); setBusy(true);
   try {
     const streetQuery = streetInput.value.trim();
-    const queryStr = citySelect.value + " " + districtSelect.value + " " + streetQuery;
 
-    const results = await searchPreciseStreet(streetQuery, citySelect.value, districtSelect.value, countrySelect.value);
-
-    // 找不到位置
-    if(!results || results.length === 0){
-      alert("找不到位置");
-      resultsPanel.innerHTML = "<div class='small'>找不到符合的餐廳。</div>";
-      return;
+    // 如果下拉選單存在，提示使用者確認
+    if (suggestionItems.length > 0 && !streetSelectionConfirmed) {
+      const confirmResult = confirm("偵測到多個相似街道，是否要使用目前輸入的文字進行搜尋？");
+      if (!confirmResult) return; // 停止搜尋，讓使用者選
+      streetSelectionConfirmed = true; // 使用者確定要直接搜尋
     }
 
+    const queryStr = citySelect.value + " " + districtSelect.value + " " + streetQuery;
+    const results = await searchPreciseStreet(streetQuery, citySelect.value, districtSelect.value, countrySelect.value);
+    if(!results || !results.length){
+      alert("找不到位置");
+      return;
+    }
     const geo = {
       lat: parseFloat(results[0].lat || results[0].center?.lat),
       lon: parseFloat(results[0].lon || results[0].center?.lon),
@@ -709,30 +712,16 @@ async function handleSearch() {
 
     const radius = parseInt(radiusInput.value) || 1000;
     const restaurants = await findRestaurants(geo.lat, geo.lon, radius, typeSelect.value);
-
-    if(!restaurants || restaurants.length === 0){
+    if(restaurants.length===0){
       resultsPanel.innerHTML = "<div class='small'>找不到符合的餐廳，但可能在附近。</div>";
     } else {
       allRestaurants = restaurants; // 全部餐廳
       const top3 = getRandomTop3(allRestaurants); // 隨機取前三
       renderResults(top3);
-
-      // 手機版搜尋完成後摺疊欄位
-      if(isMobile()){
-        collapseSearchControls(false); // false: 不保留半徑
-      }
     }
-
-    // 設定地圖中心
     map.setView([geo.lat, geo.lon], 16);
-
-  } catch(e){
-    console.error(e);
-    alert("搜尋失敗");
-  } finally {
-    hideLoading(); 
-    setBusy(false);
-  }
+  } catch(e){ console.error(e); alert("搜尋失敗"); }
+  finally { hideLoading(); setBusy(false); }
 }
 
 // 判斷使用者輸入是否完整街道名稱
@@ -928,11 +917,11 @@ function renderResults(restaurants){
       resultsPanel.appendChild(card);
   });
 
-  // renderResults() 的手機版處理
-    if(isMobile()){
-      // 搜尋後摺疊所有欄位，不保留 radius（定位後會保留 radius）
-      collapseSearchControls(false); 
-    }
+  // ----- 手機版額外處理 -----
+  if(isMobile()){
+    const showRadius = !!userLocation || streetInput.value.trim() !== "";
+    collapseSearchControls(showRadius);
+  }
 }
 
 // ----- Street autocomplete -----
@@ -1034,14 +1023,8 @@ locateBtn.addEventListener('click', ()=>{
     navigator.geolocation.getCurrentPosition(pos=>{
        userLocation={lat:pos.coords.latitude, lon:pos.coords.longitude}; 
        map.setView([userLocation.lat,userLocation.lon],16); 
-       updateRadiusVisibility(); // 顯示半徑 slider
-
-       if(isMobile()) {
-         // 定位後摺疊欄位，但保留 radius
-         collapseSearchControls(true); 
-       }
-
-    }, err=>alert("定位失敗: "+err.message));
+       updateRadiusVisibility(); // <- 新增這行
+      }, err=>alert("定位失敗: "+err.message));
   }else{ alert("瀏覽器不支援定位"); }
 });
 
