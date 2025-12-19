@@ -718,10 +718,19 @@ async function handleSearch() {
       allRestaurants = restaurants; // 全部餐廳
       const top3 = getRandomTop3(allRestaurants); // 隨機取前三
       renderResults(top3);
+      if(isMobile()){
+        collapseSearchControls(true);
+      }
     }
     map.setView([geo.lat, geo.lon], 16);
   } catch(e){ console.error(e); alert("搜尋失敗"); }
   finally { hideLoading(); setBusy(false); }
+
+    // 手機版搜尋後摺疊搜尋欄
+    if(isMobile()){
+      collapseSearchControls(true); // 摺疊欄位，顯示重新查詢按鈕
+    }
+
 }
 
 // 判斷使用者輸入是否完整街道名稱
@@ -1023,7 +1032,8 @@ locateBtn.addEventListener('click', ()=>{
     navigator.geolocation.getCurrentPosition(pos=>{
        userLocation={lat:pos.coords.latitude, lon:pos.coords.longitude}; 
        map.setView([userLocation.lat,userLocation.lon],16); 
-       updateRadiusVisibility(); // <- 新增這行
+       updateRadiusVisibility();
+       if(isMobile()) collapseSearchControls(true);
       }, err=>alert("定位失敗: "+err.message));
   }else{ alert("瀏覽器不支援定位"); }
 });
