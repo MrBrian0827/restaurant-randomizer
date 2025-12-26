@@ -394,6 +394,17 @@ function toggleUIForMobile(showFull = true) {
         reshuffleBtn.style.display = "";
         if(resetBtn) resetBtn.style.display = "";
     }
+
+    if(resetBtn) {
+        if(showFull){
+            resetBtn.style.display = "none";
+            resetBtn.classList.add("hidden");
+        } else {
+            resetBtn.style.display = "";
+            resetBtn.classList.remove("hidden");
+        }
+    }
+
 }
 
 // ----- Render Restaurants -----
