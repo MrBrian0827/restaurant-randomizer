@@ -55,31 +55,47 @@ let streetInputDebounceTimeout = null;
 const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
 
-if(locateBtn){
+if (locateBtn) {
     locateBtn.addEventListener("click", async () => {
-        if(!navigator.geolocation){
+        if (!navigator.geolocation) {
             alert("此裝置不支援定位");
             return;
         }
-        // 每次點按都詢問權限
-        showLoading(); setBusy(true);
-        navigator.geolocation.getCurrentPosition(async(pos)=>{
-            userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
-            // 在地圖標記位置
-            clearMarkers();
-            const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
-            marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
-            currentMarkers.push(marker);
-            map.setView([userLocation.lat, userLocation.lon], 15);
-            // 折疊 UI，保留半徑
-            if(isMobile()) toggleUIForMobile(false, true);
-            hideLoading(); setBusy(false);
-        }, (err)=>{
-            alert("無法取得定位");
-            hideLoading(); setBusy(false);
-        });
+        showLoading();
+        setBusy(true);
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                // 記錄使用者位置
+                userLocation = {
+                    lat: pos.coords.latitude,
+                    lon: pos.coords.longitude
+                };
+                // 清除先前的地圖標記
+                clearMarkers();
+                // 在地圖上標記使用者位置
+                const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
+                marker.bindTooltip("您目前的位置", { permanent: false, direction: 'top' });
+                currentMarkers.push(marker);
+                // 將地圖中心移動到使用者位置
+                map.setView([userLocation.lat, userLocation.lon], 15);
+                // 手機版 UI 折疊，但保留搜尋半徑欄位
+                if (isMobile()) toggleUIForMobile(false, false);
+                hideLoading();
+                setBusy(false);
+            },
+            (err) => {
+                alert("無法取得定位");
+                hideLoading();
+                setBusy(false);
+            },
+            {
+                enableHighAccuracy: true,  // 使用高精準度定位
+                maximumAge: 0,             // 不使用快取，每次都詢問
+                timeout: 10000             // 10 秒超時
+            }
+        );
     });
-}
+  }
 
 // 「重新搜尋條件」按鈕
 if (resetBtn) {
