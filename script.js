@@ -58,13 +58,19 @@ const NETWORK_TTL_FAIL = 60000;
 if(locateBtn){
     locateBtn.addEventListener("click", async () => {
         if(navigator.geolocation){
+            if(!confirm("允許取得您的位置以搜尋附近餐廳？")) return;
             showLoading(); setBusy(true);
             navigator.geolocation.getCurrentPosition(async(pos)=>{
                 userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
-                // 使用 userLocation 做搜尋或標記
+                // 地圖上標記使用者位置
+                clearMarkers();
+                const marker = L.marker([userLocation.lat, userLocation.lon], {title:"我的位置"}).addTo(map);
+                marker.bindPopup("我的位置").openPopup();
+                currentMarkers.push(marker);
                 map.setView([userLocation.lat, userLocation.lon], 15);
                 hideLoading(); setBusy(false);
-                if(isMobile()) toggleUIForMobile(false);  // 只保留重新搜尋條件、重新抽選三家、地圖、結果
+                // 隱藏搜尋欄位，只保留重新抽選三家、切換模式、重新搜尋條件
+                if(isMobile()) toggleUIForMobile(false, true);
             }, (err)=>{
                 alert("無法取得定位");
                 hideLoading(); setBusy(false);
@@ -366,8 +372,8 @@ function handleMapClick(type,query){
   else window.open(fallbackUrl,"_blank");
 }
 
-function toggleUIForMobile(showFull = true) {
-    // 要隱藏/顯示的元素（label + input/select +說明文字）
+function toggleUIForMobile(showFull = true, isSearchActive = false) {
+    // 控制搜尋欄位
     const elementsToToggle = [
         countrySelect, 
         citySelect, 
@@ -383,22 +389,18 @@ function toggleUIForMobile(showFull = true) {
         document.querySelector('label[for="streetInput"]'),
         document.querySelector('label[for="typeSelect"]'),
         document.querySelector('label[for="radiusInput"]'),
-        document.querySelector('.controls .small') // 搜尋半徑說明文字
+        document.querySelector('.controls .small')
     ];
     elementsToToggle.forEach(el => { 
         if(el) el.style.display = showFull ? "" : "none"; 
     });
     // 永遠保留「重新抽選三家」
     reshuffleBtn.style.display = "";
-    // 手機專用「重新搜尋條件」按鈕
+    // 「重新搜尋條件」按鈕
     if(resetBtn){
-        if(showFull){
-            resetBtn.style.display = "none";       // 展開完整 UI → 隱藏按鈕
-        } else {
-            resetBtn.style.display = "";           // 折疊 UI → 顯示按鈕
-        }
+        resetBtn.style.display = isSearchActive ? "" : "none";
     }
-    // 保持地圖和結果區顯示
+    // 地圖與結果區
     if(resultsPanel) resultsPanel.style.display = "";
     if(map) map.style.display = "";
 }
@@ -485,32 +487,24 @@ async function doSearch(){
   userLocation = null;
   showLoading(); 
   setBusy(true);
-  try{
-    const city = citySelect.value; 
-    const district = districtSelect.value;
-    const street = streetInput.value.trim(); 
-    selectedStreetName = street;
-    const type = typeSelect.value; 
-    const radius = parseInt(radiusInput.value);
-    const queryArr = [city, district, street].filter(s => s).join(" ");
+  try {
     const center = await geocode(queryArr); 
-    if(!center) { 
-        alert("找不到該地址位置"); 
-        hideLoading(); 
-        setBusy(false); 
-        return; 
-    }
-    lastSearchCenter = center; 
     lastRestaurants = await findRestaurants(center.lat, center.lon, radius, type);
-    lastRestaurants = await mergeGeocodeInfo(lastRestaurants, queryArr); // <-- 合併 geocode info
-        // ✅ 隨機抽三筆
+    lastRestaurants = await mergeGeocodeInfo(lastRestaurants, queryArr);
     const randomResults = shuffleArray(lastRestaurants).slice(0, 3);
     renderRestaurants(randomResults);
-    if(isMobile()) toggleUIForMobile(false); // ✅ 搜尋完成後折疊 UI
-  }catch(e){ 
-      console.error(e); 
-      alert("搜尋失敗，請稍後再試"); 
-  }
+    if(isMobile()) toggleUIForMobile(false, true);
+      // ✅ 搜尋結果為空時才提示
+      if (!lastRestaurants || lastRestaurants.length === 0) {
+          alert("找不到符合的店家，請稍後再試");
+      }
+    } catch(e) {
+        console.error(e);
+        // 只有在完全沒資料時才 alert
+        if (!lastRestaurants || lastRestaurants.length === 0) {
+            alert("搜尋失敗，請稍後再試");
+        }
+    }
   hideLoading(); 
   setBusy(false);
 }
