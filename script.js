@@ -367,6 +367,7 @@ function handleMapClick(type,query){
 }
 
 function toggleUIForMobile(showFull = true) {
+    // 要隱藏/顯示的元素（label + input/select +說明文字）
     const elementsToToggle = [
         countrySelect, 
         citySelect, 
@@ -376,35 +377,30 @@ function toggleUIForMobile(showFull = true) {
         typeSelect, 
         radiusInput, 
         radiusLabel,
-        ...document.querySelectorAll('label[for="countrySelect"], label[for="citySelect"], label[for="districtSelect"], label[for="streetInput"], label[for="typeSelect"], label[for="radiusInput"]'),
-        ...document.querySelectorAll('.controls .small')
+        document.querySelector('label[for="countrySelect"]'),
+        document.querySelector('label[for="citySelect"]'),
+        document.querySelector('label[for="districtSelect"]'),
+        document.querySelector('label[for="streetInput"]'),
+        document.querySelector('label[for="typeSelect"]'),
+        document.querySelector('label[for="radiusInput"]'),
+        document.querySelector('.controls .small') // 搜尋半徑說明文字
     ];
-    elementsToToggle.forEach(el => { if(el) el.style.display = showFull ? "" : "none"; });
-
-    if(showFull){
-        // 展開完整 UI → 顯示搜尋 / 定位 / 重新抽選
-        searchBtn.style.display = "";
-        locateBtn.style.display = "";
-        reshuffleBtn.style.display = "";
-        if(resetBtn) resetBtn.style.display = "none";
-    } else {
-        // 收合 UI → 只保留重新抽選、切換模式、重新搜尋條件
-        searchBtn.style.display = "none";
-        locateBtn.style.display = "none";
-        reshuffleBtn.style.display = "";
-        if(resetBtn) resetBtn.style.display = "";
-    }
-
-    if(resetBtn) {
+    elementsToToggle.forEach(el => { 
+        if(el) el.style.display = showFull ? "" : "none"; 
+    });
+    // 永遠保留「重新抽選三家」
+    reshuffleBtn.style.display = "";
+    // 手機專用「重新搜尋條件」按鈕
+    if(resetBtn){
         if(showFull){
-            resetBtn.style.display = "none";
-            resetBtn.classList.add("hidden");
+            resetBtn.style.display = "none";       // 展開完整 UI → 隱藏按鈕
         } else {
-            resetBtn.style.display = "";
-            resetBtn.classList.remove("hidden");
+            resetBtn.style.display = "";           // 折疊 UI → 顯示按鈕
         }
     }
-
+    // 保持地圖和結果區顯示
+    if(resultsPanel) resultsPanel.style.display = "";
+    if(map) map.style.display = "";
 }
 
 // ----- Render Restaurants -----
