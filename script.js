@@ -341,8 +341,14 @@ function createActionButtons(lat, lon, name, r) {
     btnView.textContent = "📍 顯示在地圖";
     btnView.classList.add("action-btn", "map-btn");
     btnView.addEventListener("click", () => {
-        map.setView([lat, lon], 17);
+    map.setView([lat, lon], 17);
+    // 手機上自動滾動到地圖
+    const mapEl = document.getElementById("map");
+    if(mapEl){
+        mapEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
     });
+
 
     // 在 Google Maps 開啟
     const btnMaps = document.createElement("button");
@@ -406,15 +412,15 @@ function handleMapClick(type, query){
  * @param {boolean} showFull - true 顯示完整 UI，false 折疊
  * @param {boolean} keepRadius - 折疊時是否保留搜尋半徑欄位
  */
-function toggleUIForMobile(showFull = true, keepRadius = false) {
+function toggleUIForMobile(showFull = true, hideRadius = true) {
     const elementsToToggle = [
-        countrySelect,
-        citySelect,
-        districtSelect,
-        streetInput,
+        countrySelect, 
+        citySelect, 
+        districtSelect, 
+        streetInput, 
         streetSuggestions,
-        typeSelect,
-        radiusInput,
+        typeSelect, 
+        radiusInput, 
         radiusLabel,
         document.querySelector('label[for="countrySelect"]'),
         document.querySelector('label[for="citySelect"]'),
@@ -424,23 +430,21 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
         document.querySelector('label[for="radiusInput"]'),
         document.querySelector('.controls .small') // 搜尋半徑說明
     ];
-    elementsToToggle.forEach(el => {
-        if (!el) return;
-        // 折疊時保留 radius
-        if (!showFull && keepRadius) {
-            if (el === radiusInput || el === radiusLabel || el === document.querySelector('label[for="radiusInput"]')) {
+
+    elementsToToggle.forEach(el => { 
+        if(el){
+            // radiusInput / radiusLabel / 說明文字只在 hideRadius 為 true 時才隱藏
+            if((el === radiusInput || el === radiusLabel || el === document.querySelector('.controls .small')) && !hideRadius) {
                 el.style.display = "";
-                return;
+            } else {
+                el.style.display = showFull ? "" : "none"; 
             }
         }
-        el.style.display = showFull ? "" : "none";
     });
+
     // 兩個按鈕永遠顯示
     reshuffleBtn.style.display = "";
-    // 手機專用「重新搜尋條件」按鈕
-    if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
-    // 手機版取得我的位置按鈕
-    if(locateBtn) locateBtn.style.display = showFull ? "" : "none"; // 隱藏或顯示
+    if(resetBtn) resetBtn.style.display = showFull ? "none" : "";
 }
 
 // ----- Render Restaurants -----
@@ -677,3 +681,5 @@ function isReliableAddress(address) {
   // ✅ 通過所有檢查
   return true;
 }
+
+if (isMobile()) toggleUIForMobile(true, false);
