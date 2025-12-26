@@ -368,14 +368,27 @@ function handleMapClick(type,query){
 
 function toggleUIForMobile(showFull = true) {
     const elementsToToggle = [
-        citySelect, districtSelect, streetInput, streetSuggestions,
-        typeSelect, radiusInput, radiusLabel, countrySelect,
-        searchBtn, locateBtn, themeToggleBtn
+        countrySelect, 
+        citySelect, 
+        districtSelect, 
+        streetInput, 
+        streetSuggestions,
+        typeSelect, 
+        radiusInput, 
+        radiusLabel,
+        document.querySelector('label[for="countrySelect"]'),
+        document.querySelector('label[for="citySelect"]'),
+        document.querySelector('label[for="districtSelect"]'),
+        document.querySelector('label[for="streetInput"]'),
+        document.querySelector('label[for="typeSelect"]'),
+        document.querySelector('label[for="radiusInput"]'),
+        document.querySelector('.controls .small') // 搜尋半徑說明
     ];
     elementsToToggle.forEach(el => { if(el) el.style.display = showFull ? "" : "none"; });
-
     // 兩個按鈕永遠顯示
     reshuffleBtn.style.display = "";
+    // 手機專用「重新搜尋條件」按鈕
+    if(resetBtn) resetBtn.style.display = showFull ? "none" : "";
 }
 
 // ----- Render Restaurants -----
@@ -386,21 +399,16 @@ function renderRestaurants(restaurants) {
         resultsPanel.textContent = "找不到符合的店家";
         return;
     }
-
     const bounds = L.latLngBounds([]);
-
     // 隨機抽三筆
     const displayRestaurants = shuffleArray(restaurants).slice(0, 3);
-
     displayRestaurants.forEach(r => {
         const t = r.tags || {};
         const lat = r.lat || r.center?.lat;
         const lon = r.lon || r.center?.lon;
         if (!lat || !lon) return;
-
         // --- Name ---
         let name = t.name || r.name || "查無資料";
-
         // --- Address ---
         let rawAddress = "";
         if (t["addr:street"] || t["addr:housenumber"]) {
@@ -410,69 +418,53 @@ function renderRestaurants(restaurants) {
         } else if (r.geocodeAddress) {
             rawAddress = r.geocodeAddress;
         }
-
         let address = isReliableAddress(rawAddress) ? rawAddress : "查無資料";
-
         // --- Opening Hours ---
         let hours = t.opening_hours || r.opening_hours || "查無資料";
-
         // --- Popup Content ---
         const popupContent = document.createElement("div");
         const titleEl = document.createElement("h3");
         titleEl.textContent = name;
         titleEl.className = "card-title";
         popupContent.appendChild(titleEl);
-
         const addrEl = document.createElement("p");
         addrEl.textContent = "店家地址: " + address;
         addrEl.className = "card-sub";
         popupContent.appendChild(addrEl);
-
         const hoursEl = document.createElement("p");
         hoursEl.textContent = "店家營業時間: " + hours;
         hoursEl.className = "card-sub";
         popupContent.appendChild(hoursEl);
-
         const btnContainer = createActionButtons(lat, lon, name, r);
         popupContent.appendChild(btnContainer);
-
         // --- Leaflet Marker ---
         const marker = L.marker([lat, lon]).addTo(map);
         marker.bindTooltip(name, {permanent: false, direction: 'top'});
         currentMarkers.push(marker);
         bounds.extend([lat, lon]);
-
         // --- Card in Results Panel ---
         const card = document.createElement("div");
         card.className = "card";
-
         const cardLeft = document.createElement("div");
         cardLeft.className = "card-left";
-
         const cardTitle = document.createElement("h3");
         cardTitle.textContent = name;
         cardTitle.className = "card-title";
         cardLeft.appendChild(cardTitle);
-
         const cardAddr = document.createElement("p");
         cardAddr.textContent = "店家地址: " + address;
         cardAddr.className = "card-sub";
         cardLeft.appendChild(cardAddr);
-
         const cardHours = document.createElement("p");
         cardHours.textContent = "店家營業時間: " + hours;
         cardHours.className = "card-sub";
         cardLeft.appendChild(cardHours);
-
         card.appendChild(cardLeft);
-
         // ✅ 生成新的按鈕，保證事件處理器有效
         const cardActions = createActionButtons(lat, lon, name, r);
         card.appendChild(cardActions);
-
         resultsPanel.appendChild(card);
     });
-
     if (currentMarkers.length > 0) map.fitBounds(bounds.pad(0.3));
 }
 
@@ -519,15 +511,19 @@ reshuffleBtn.addEventListener("click", ()=>{
     if(isMobile()) toggleUIForMobile(false);
   });
 
+  window.addEventListener("beforeunload", () => {
+    userLocation = null;
+  });
+
   // 綁定事件
   if(resetBtn){
     resetBtn.addEventListener("click", () => {
-      toggleUIForMobile(true); // 重新展開完整 UI
-      userLocation = null;      // 清掉上一個搜尋的位置
-      streetInput.value = "";
-      streetSuggestions.innerHTML = "";
-      resultsPanel.innerHTML = "";
-      map.setView([25.033964,121.564468], 13); // 回到預設地圖
+        toggleUIForMobile(true);   // 展開完整 UI
+        userLocation = null;       // 清掉上一個搜尋位置
+        streetInput.value = "";
+        streetSuggestions.innerHTML = "";
+        resultsPanel.innerHTML = "";
+        map.setView([25.033964,121.564468], 13); // 回到預設地圖
     });
   }
 
