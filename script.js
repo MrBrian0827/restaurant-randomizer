@@ -57,6 +57,8 @@ const NETWORK_TTL_FAIL = 60000;
 
 if (locateBtn) {
     locateBtn.addEventListener("click", async () => {
+        // 清掉上一個使用者位置
+        userLocation = null;
         if (!navigator.geolocation) {
             alert("此裝置不支援定位");
             return;
@@ -65,33 +67,27 @@ if (locateBtn) {
         setBusy(true);
         navigator.geolocation.getCurrentPosition(
             async (pos) => {
-                // 記錄使用者位置
-                userLocation = {
-                    lat: pos.coords.latitude,
-                    lon: pos.coords.longitude
-                };
-                // 清除先前的地圖標記
+                userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+                // 在地圖上標記
                 clearMarkers();
-                // 在地圖上標記使用者位置
                 const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
                 marker.bindTooltip("您目前的位置", { permanent: false, direction: 'top' });
                 currentMarkers.push(marker);
-                // 將地圖中心移動到使用者位置
                 map.setView([userLocation.lat, userLocation.lon], 15);
-                // 手機版 UI 折疊，但保留搜尋半徑欄位
-                if (isMobile()) toggleUIForMobile(false, false);
+                // 手機版 UI 折疊，但保留半徑
+                if(isMobile()) toggleUIForMobile(false, false);
                 hideLoading();
                 setBusy(false);
             },
             (err) => {
-                alert("無法取得定位");
+                alert("無法取得定位，請允許位置權限");
                 hideLoading();
                 setBusy(false);
             },
             {
-                enableHighAccuracy: true,  // 使用高精準度定位
-                maximumAge: 0,             // 不使用快取，每次都詢問
-                timeout: 10000             // 10 秒超時
+                enableHighAccuracy: true,
+                maximumAge: 0,  // 強制每次詢問
+                timeout: 10000
             }
         );
     });
@@ -615,7 +611,7 @@ reshuffleBtn.addEventListener("click", ()=>{
   // 綁定事件
   if(resetBtn){
     resetBtn.addEventListener("click", () => {
-        toggleUIForMobile(true);   // 展開完整 UI
+        toggleUIForMobile(true, false);   // 展開完整 UI
         userLocation = null;       // 清掉上一個搜尋位置
         streetInput.value = "";
         streetSuggestions.innerHTML = "";
@@ -625,7 +621,9 @@ reshuffleBtn.addEventListener("click", ()=>{
   }
 
 // ----- Radius Label -----
-radiusInput.addEventListener("input",()=>{ radiusLabel.textContent=radiusInput.value+"公尺"; });
+radiusInput.addEventListener("input", () => {
+    radiusLabel.textContent = radiusInput.value + "公尺";
+});
 
 // ----- Street Autocomplete -----
 streetInput.addEventListener("input",(e)=>{
@@ -652,50 +650,19 @@ window.addEventListener("beforeunload", () => {
  * @returns {boolean}
  */
 function isReliableAddress(address) {
-  if (!address) return false;
-  const addr = String(address).trim();
-  // 1️⃣ 明確排除的狀況
-  if (
-    addr === "" ||
-    addr === "查無資料" ||
-    addr === "無資料" ||
-    addr.length < 6
-  ) {
-    return false;
-  }
-  // 2️⃣ 排除只有行政區的地址（太模糊）
-  // 例：中正區, 臺北市, 臺灣
-  const adminOnlyPattern =
-    /^(.*(縣|市))?\s*(.*(區|鄉|鎮|市))(\s*,?\s*臺灣)?$/;
-  if (adminOnlyPattern.test(addr)) {
-    return false;
-  }
-  // 3️⃣ 台灣「可定位地址」常見關鍵字
-  const taiwanAddressKeywords = [
-    "路",
-    "街",
-    "巷",
-    "弄",
-    "號",
-    "段",
-    "大道",
-    "橋",
-    "大樓"
-  ];
-  const hasAddressKeyword = taiwanAddressKeywords.some(k =>
-    addr.includes(k)
-  );
-  if (!hasAddressKeyword) {
-    return false;
-  }
-  // 4️⃣ 防呆：避免只有「路名」但沒門牌
-  // 例如「忠孝東路」
-  const hasHouseNumber = /\d+號/.test(addr);
-  if (!hasHouseNumber) {
-    return false;
-  }
-  // ✅ 通過所有檢查
-  return true;
+    if (!address) return false;
+    const addr = String(address).trim();
+    if (addr === "" || addr === "查無資料" || addr.length < 6) return false;
+    // 排除只有行政區的地址
+    const adminOnlyPattern = /^(.*(縣|市))?\s*(.*(區|鄉|鎮|市))(\s*,?\s*臺灣)?$/;
+    if (adminOnlyPattern.test(addr)) return false;
+    // 台灣常見地址關鍵字
+    const keywords = ["路","街","巷","弄","號","段","大道","橋","大樓"];
+    if (!keywords.some(k => addr.includes(k))) return false;
+    // 防呆：只有路名沒門牌就不行
+    if (!/\d+號/.test(addr)) return false;
+    // ✅ 放寬允許中文逗號，像 "黃家香腸、100臺北市中正區泉州街32之3號"
+    return true;
 }
 
 if (isMobile()) toggleUIForMobile(true, false);
