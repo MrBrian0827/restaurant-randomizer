@@ -55,42 +55,32 @@ let streetInputDebounceTimeout = null;
 const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
 
-if (locateBtn) {
+if(locateBtn){
     locateBtn.addEventListener("click", async () => {
-        if (!navigator.geolocation) {
+        if(!navigator.geolocation){
             alert("此裝置不支援定位");
             return;
         }
-        // 每次按下都詢問是否授權
-        showLoading();
-        setBusy(true);
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                // 取得位置
-                userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-                // 放置地圖大頭針
-                clearMarkers();
-                const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
-                marker.bindPopup("📍 您的位置").openPopup();
-                currentMarkers.push(marker);
-                map.setView([userLocation.lat, userLocation.lon], 15);
-                // 手機 UI 折疊（保留半徑選擇）
-                if (isMobile()) toggleUIForMobile(false, true);
-                // 顯示重新搜尋條件按鈕
-                if (resetBtn) resetBtn.style.display = "";
-                hideLoading();
-                setBusy(false);
-            },
-            (err) => {
-                console.error("無法取得定位:", err);
-                alert("無法取得定位");
-                hideLoading();
-                setBusy(false);
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
+        // 每次點按都詢問權限
+        showLoading(); setBusy(true);
+        navigator.geolocation.getCurrentPosition(async(pos)=>{
+            userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
+            // 在地圖標記位置
+            clearMarkers();
+            const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
+            marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
+            currentMarkers.push(marker);
+            map.setView([userLocation.lat, userLocation.lon], 15);
+            // 折疊 UI，保留半徑
+            if(isMobile()) toggleUIForMobile(false, true);
+            hideLoading(); setBusy(false);
+        }, (err)=>{
+            alert("無法取得定位");
+            hideLoading(); setBusy(false);
+        });
     });
 }
+
 // 「重新搜尋條件」按鈕
 if (resetBtn) {
     resetBtn.addEventListener("click", () => {
@@ -393,11 +383,22 @@ function createActionButtons(lat, lon, name, r) {
 }
 
 // ----- Map Click Handler -----
-function handleMapClick(type,query){
-  const fallbackUrl=`https://www.google.com/maps/${type==='nav'?'dir':'search'}/?api=1&${type==='nav'?'destination':'query'}=${query}&travelmode=driving`;
-  if(isIOS()){ const iosUrl=type==='nav'?`comgooglemaps://?daddr=${query}&directionsmode=driving`:`comgooglemaps://?q=${query}&zoom=16`; window.location.href=iosUrl; setTimeout(()=>window.open(fallbackUrl,"_blank"),500); }
-  else if(isAndroid()){ const androidUrl=type==='nav'?`intent://maps.google.com/maps?daddr=${query}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`:`intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`; window.location.href=androidUrl; setTimeout(()=>window.open(fallbackUrl,"_blank"),500); }
-  else window.open(fallbackUrl,"_blank");
+function handleMapClick(type, query){
+    const fallbackUrl=`https://www.google.com/maps/${type==='nav'?'dir':'search'}/?api=1&${type==='nav'?'destination':'query'}=${query}&travelmode=driving`;
+    // 顯示地圖區域
+    const mapEl = document.getElementById("map");
+    if(mapEl){
+        mapEl.scrollIntoView({behavior:"smooth"});
+    }
+    if(isIOS()){
+        const iosUrl = type==='nav' ? `comgooglemaps://?daddr=${query}&directionsmode=driving` : `comgooglemaps://?q=${query}&zoom=16`;
+        window.location.href=iosUrl; 
+        setTimeout(()=>window.open(fallbackUrl,"_blank"),500);
+    } else if(isAndroid()){
+        const androidUrl = type==='nav' ? `intent://maps.google.com/maps?daddr=${query}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end` : `intent://maps.google.com/maps?q=${query}#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+        window.location.href = androidUrl;
+        setTimeout(()=>window.open(fallbackUrl,"_blank"),500);
+    } else window.open(fallbackUrl,"_blank");
 }
 
 /**
@@ -438,6 +439,8 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
     reshuffleBtn.style.display = "";
     // 手機專用「重新搜尋條件」按鈕
     if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
+    // 手機版取得我的位置按鈕
+    if(locateBtn) locateBtn.style.display = showFull ? "" : "none"; // 隱藏或顯示
 }
 
 // ----- Render Restaurants -----
