@@ -376,19 +376,24 @@ function toggleUIForMobile(showFull = true) {
         typeSelect, 
         radiusInput, 
         radiusLabel,
-        document.querySelector('label[for="countrySelect"]'),
-        document.querySelector('label[for="citySelect"]'),
-        document.querySelector('label[for="districtSelect"]'),
-        document.querySelector('label[for="streetInput"]'),
-        document.querySelector('label[for="typeSelect"]'),
-        document.querySelector('label[for="radiusInput"]'),
-        document.querySelector('.controls .small') // 搜尋半徑說明
+        ...document.querySelectorAll('label[for="countrySelect"], label[for="citySelect"], label[for="districtSelect"], label[for="streetInput"], label[for="typeSelect"], label[for="radiusInput"]'),
+        ...document.querySelectorAll('.controls .small')
     ];
     elementsToToggle.forEach(el => { if(el) el.style.display = showFull ? "" : "none"; });
-    // 兩個按鈕永遠顯示
-    reshuffleBtn.style.display = "";
-    // 手機專用「重新搜尋條件」按鈕
-    if(resetBtn) resetBtn.style.display = showFull ? "none" : "";
+
+    if(showFull){
+        // 展開完整 UI → 顯示搜尋 / 定位 / 重新抽選
+        searchBtn.style.display = "";
+        locateBtn.style.display = "";
+        reshuffleBtn.style.display = "";
+        if(resetBtn) resetBtn.style.display = "none";
+    } else {
+        // 收合 UI → 只保留重新抽選、切換模式、重新搜尋條件
+        searchBtn.style.display = "none";
+        locateBtn.style.display = "none";
+        reshuffleBtn.style.display = "";
+        if(resetBtn) resetBtn.style.display = "";
+    }
 }
 
 // ----- Render Restaurants -----
@@ -527,9 +532,6 @@ reshuffleBtn.addEventListener("click", ()=>{
     });
   }
 
-  // 手機版顯示按鈕
-  if (isMobile() && resetBtn) resetBtn.style.display = "";
-
 // ----- Radius Label -----
 radiusInput.addEventListener("input",()=>{ radiusLabel.textContent=radiusInput.value+"公尺"; });
 
@@ -548,7 +550,6 @@ document.addEventListener("click",(e)=>{ if(!streetInput.contains(e.target)) str
 
 // ----- Initial Radius -----
 radiusLabel.textContent=radiusInput.value+"公尺";
-
 window.addEventListener("beforeunload", () => {
   userLocation = null;
 });
