@@ -56,42 +56,31 @@ const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
 
 if (locateBtn) {
-    locateBtn.addEventListener("click", async () => {
-        // 清掉上一個使用者位置
-        userLocation = null;
-        if (!navigator.geolocation) {
-            alert("此裝置不支援定位");
-            return;
+  locateBtn.addEventListener("click", async () => {
+  userLocation = null;  // 強制清空位置，每次都重新嘗試
+      if(!navigator.geolocation){
+          alert("此裝置不支援定位");
+          return;
+      }
+      showLoading(); setBusy(true);
+      navigator.geolocation.getCurrentPosition(
+        async(pos)=>{
+            userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
+            clearMarkers();
+            const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
+            marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
+            currentMarkers.push(marker);
+            map.setView([userLocation.lat, userLocation.lon], 15);
+            if(isMobile()) toggleUIForMobile(false, false); // ✅ 保留半徑欄位
+            hideLoading(); setBusy(false);
+        }, 
+        (err)=>{
+            alert("無法取得定位，請確認瀏覽器允許定位權限，或重新整理頁面再嘗試");
+            hideLoading(); setBusy(false);
         }
-        showLoading();
-        setBusy(true);
-        navigator.geolocation.getCurrentPosition(
-            async (pos) => {
-                userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-                // 在地圖上標記
-                clearMarkers();
-                const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
-                marker.bindTooltip("您目前的位置", { permanent: false, direction: 'top' });
-                currentMarkers.push(marker);
-                map.setView([userLocation.lat, userLocation.lon], 15);
-                // 手機版 UI 折疊，但保留半徑
-                if(isMobile()) toggleUIForMobile(false, false);
-                hideLoading();
-                setBusy(false);
-            },
-            (err) => {
-                alert("無法取得定位，請允許位置權限");
-                hideLoading();
-                setBusy(false);
-            },
-            {
-                enableHighAccuracy: true,
-                maximumAge: 0,  // 強制每次詢問
-                timeout: 10000
-            }
-        );
-    });
-  }
+      );
+  });
+}
 
 // 「重新搜尋條件」按鈕
 if (resetBtn) {
@@ -577,7 +566,7 @@ async function doSearch() {
         const randomResults = shuffleArray(lastRestaurants).slice(0, 3);
         renderRestaurants(randomResults);
         // 手機 UI 折疊
-        if (isMobile()) toggleUIForMobile(false, true);
+        if (isMobile()) toggleUIForMobile(false, false); // false → 不隱藏半徑欄位
         // 顯示重新搜尋條件按鈕
         if (resetBtn) resetBtn.style.display = "";
         // 若結果為空，才 alert
@@ -652,16 +641,15 @@ window.addEventListener("beforeunload", () => {
 function isReliableAddress(address) {
     if (!address) return false;
     const addr = String(address).trim();
-    if (addr === "" || addr === "查無資料" || addr.length < 6) return false;
+    if (addr === "" || addr === "查無資料") return false;
     // 排除只有行政區的地址
     const adminOnlyPattern = /^(.*(縣|市))?\s*(.*(區|鄉|鎮|市))(\s*,?\s*臺灣)?$/;
     if (adminOnlyPattern.test(addr)) return false;
     // 台灣常見地址關鍵字
     const keywords = ["路","街","巷","弄","號","段","大道","橋","大樓"];
     if (!keywords.some(k => addr.includes(k))) return false;
-    // 防呆：只有路名沒門牌就不行
-    if (!/\d+號/.test(addr)) return false;
-    // ✅ 放寬允許中文逗號，像 "黃家香腸、100臺北市中正區泉州街32之3號"
+    // 防呆：只要有數字就算，允許中文逗號
+    if (!/\d/.test(addr)) return false;
     return true;
 }
 
