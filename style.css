@@ -27,6 +27,11 @@ body.dark-mode {
   --input-color: #e0e0e0;
 }
 
+/* Utility */
+.hidden {
+  display: none !important;
+}
+
 /* ===========================
    Base & Fix for White Lines
 =========================== */
@@ -251,6 +256,39 @@ button:active span.emoji {
 .card-actions { display:flex; gap:6px; flex-wrap:wrap; }
 .card-actions button { padding:8px 10px; font-size:14px; flex-shrink:0; }
 
+/* ===== 調整店家資訊顯示 ===== */
+.card-left {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 200px;
+  line-height: 1.4;       /* 行距適中 */
+  gap: 2px;               /* 每行間距 */
+}
+
+.card-title {
+  font-weight: 700;
+  margin: 0 0 2px 0;
+  font-size: 16px;
+  color: var(--text-color);
+}
+
+.card-sub {
+  font-size: 14px;
+  margin: 0;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+/* 暗黑模式自動套用 */
+body.dark-mode .card-title {
+  color: var(--text-color);
+}
+
+body.dark-mode .card-sub {
+  color: var(--muted);
+}
+
 /* Loading */
 .loading-overlay {
   position: fixed;
@@ -302,6 +340,11 @@ body.dark-mode .loading-overlay { background: rgba(0,0,0,0.6); }
 .suggestion-item:hover { background:#e0f7fa; }
 body.dark-mode .suggestion-item:hover { background: #333; }
 
+/* Reset Search Button (Mobile) */
+.reset-search-btn {
+  display: none; /* 預設不顯示，JS 會控制 */
+}
+
 /* Mobile */
 @media(max-width:900px){
   .main-grid{ grid-template-columns:1fr; }
@@ -311,4 +354,21 @@ body.dark-mode .suggestion-item:hover { background: #333; }
   .actions-col{ justify-content:flex-start; }
   .card{ flex-direction:column; align-items:flex-start; }
   .card-actions{ width:100%; justify-content:flex-start; }
+  /* 手機搜尋後隱藏搜尋條件 */
+  .controls.mobile-hidden {
+    display: none;
+  }
+    /* 手機版顯示「重新搜尋條件」按鈕 */
+  .reset-search-btn {
+    display: block;
+    width: 100%;
+    margin: 8px 0;
+    padding: 14px;
+    border-radius: 10px;
+    border: 0;
+    font-size: 16px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #64748b, #94a3b8);
+    color: #fff;
+  }
 }
