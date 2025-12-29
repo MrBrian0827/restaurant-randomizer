@@ -71,7 +71,7 @@ if (locateBtn) {
             marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
             currentMarkers.push(marker);
             map.setView([userLocation.lat, userLocation.lon], 15);
-            if (isMobile()) toggleUIForMobile(false, true); // ✅ 保留半徑欄位
+            if(isMobile()) toggleUIForMobile(false, true); // ✅ 保留半徑欄位
             hideLoading(); setBusy(false);
         }, 
         (err)=>{
@@ -267,34 +267,43 @@ async function findRestaurants(lat,lon,radius=1000,type=''){
 }
 
 // ----- Merge Geocode Info -----
-async function mergeGeocodeInfo(restaurants) {
+async function mergeGeocodeInfo(restaurants, centerQuery) {
     if (!restaurants || restaurants.length === 0) return restaurants;
 
-    for (const r of restaurants) {
-        const t = r.tags || {};
-        const name = t.name;
-        if (!name) continue;
-
-        // 已有可靠地址就不補
-        if (isReliableAddress(t["addr:full"])) {
-            r.geocodeAddress = t["addr:full"];
-            continue;
-        }
-
-        // 用「店名 + 城市 + 區」再查一次
-        const query = `${name} ${citySelect.value} ${districtSelect.value}`;
-
-        try {
-            const geo = await geocode(query);
-            if (geo?.raw?.display_name && isReliableAddress(geo.raw.display_name)) {
-                r.geocodeAddress = geo.raw.display_name;
-            }
-        } catch (e) {
-            console.warn("店家補地址失敗:", name);
-        }
+    let geocodeData = null;
+    try {
+        geocodeData = await geocode(centerQuery);
+    } catch (e) {
+        console.warn("Geocode merge failed:", e);
     }
 
-    return restaurants;
+    return restaurants.map(r => {
+        const t = r.tags || {};
+        r.name = t.name || r.name || "查無資料";
+
+        let fullAddr = "";
+        if (t["addr:full"]) {
+            fullAddr = t["addr:full"];
+        } else if (t["addr:street"] || t["addr:housenumber"]) {
+            fullAddr = `${t["addr:street"] || ""} ${t["addr:housenumber"] || ""}`.trim();
+        }
+
+        if (!isReliableAddress(fullAddr) && geocodeData?.raw?.display_name) {
+            fullAddr = geocodeData.raw.display_name;
+        }
+
+        if (!isReliableAddress(fullAddr)) {
+            fullAddr = `${r.lat || r.center?.lat},${r.lon || r.center?.lon}`;
+            r.addressFallback = true;
+        } else {
+            r.addressFallback = false;
+        }
+
+        r.geocodeAddress = fullAddr;
+        r.opening_hours = t.opening_hours || geocodeData?.raw?.extratags?.opening_hours || "查無資料";
+
+        return r;
+    });
 }
 
 // ----- Levenshtein -----
