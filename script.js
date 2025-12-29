@@ -269,42 +269,46 @@ async function findRestaurants(lat,lon,radius=1000,type=''){
   return exactMatch.concat(fuzzyMatch);
 }
 
-// ----- Merge Geocode Info -----
+// ----- Merge Geocode Info (進階版) -----
 async function mergeGeocodeInfo(restaurants, centerQuery) {
     if (!restaurants || restaurants.length === 0) return restaurants;
-
     let geocodeData = null;
     try {
         geocodeData = await geocode(centerQuery);
     } catch (e) {
         console.warn("Geocode merge failed:", e);
     }
-
     return restaurants.map(r => {
         const t = r.tags || {};
         r.name = t.name || r.name || "查無資料";
-
+        // ------------------ 地址處理 ------------------
         let fullAddr = "";
         if (t["addr:full"]) {
             fullAddr = t["addr:full"];
         } else if (t["addr:street"] || t["addr:housenumber"]) {
             fullAddr = `${t["addr:street"] || ""} ${t["addr:housenumber"] || ""}`.trim();
+        } else if (t["addr:place"]) {
+            fullAddr = t["addr:place"];
+        } else if (t["addr:suburb"]) {
+            fullAddr = t["addr:suburb"];
+        } else if (t["addr:district"] && t["addr:city"]) {
+            fullAddr = `${t["addr:district"]}, ${t["addr:city"]}`;
         }
-
+        // geocode 備援
         if (!isReliableAddress(fullAddr) && geocodeData?.raw?.display_name) {
             fullAddr = geocodeData.raw.display_name;
         }
-
+        // 完全沒有可靠地址時 fallback 成經緯度
         if (!isReliableAddress(fullAddr)) {
             fullAddr = `${r.lat || r.center?.lat},${r.lon || r.center?.lon}`;
             r.addressFallback = true;
         } else {
             r.addressFallback = false;
         }
-
         r.geocodeAddress = fullAddr;
-        r.opening_hours = t.opening_hours || geocodeData?.raw?.extratags?.opening_hours || "查無資料";
-
+        // ------------------ 營業時間處理 ------------------
+        // 優先使用 OSM 各欄位，最後用 geocode extratags 備援
+        r.opening_hours = t.opening_hours || t.note || t.description || t.operator || geocodeData?.raw?.extratags?.opening_hours || "查無資料";
         return r;
     });
 }
@@ -332,46 +336,42 @@ function createActionButtons(lat, lon, name, r) {
     container.className = "card-actions";
 
     const t = r.tags || {};
-    // 優先使用 addr:full, 然後 mergeGeocodeInfo 產生的 geocodeAddress
     let rawAddress = t["addr:full"] || r.geocodeAddress || "";
     rawAddress = rawAddress.trim();
 
-    // 判斷地址是否可靠
     const hasReliableAddress = isReliableAddress(rawAddress);
     const fullAddress = hasReliableAddress ? rawAddress : "";
 
-    // 顯示在地圖
+    // --- 顯示在地圖 ---
     const btnView = document.createElement("button");
     btnView.textContent = "📍 顯示在地圖";
     btnView.classList.add("action-btn", "map-btn");
     btnView.addEventListener("click", () => {
-    map.setView([lat, lon], 17);
-    // 手機上自動滾動到地圖
-    const mapEl = document.getElementById("map");
-    if(mapEl){
-        mapEl.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
+        map.setView([lat, lon], 17);
+        const mapEl = document.getElementById("map");
+        if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
-
-    // 在 Google Maps 開啟
+    // --- 在 Google Maps 開啟 ---
     const btnMaps = document.createElement("button");
     btnMaps.textContent = "🗺️ 在 Google Maps 開啟";
     btnMaps.classList.add("action-btn", "google-btn");
     btnMaps.addEventListener("click", () => {
         let query;
         if (hasReliableAddress) {
-            // 有完整地址就直接用地址
             query = encodeURIComponent(fullAddress);
         } else {
-            // 沒有地址 fallback 經緯度，並提醒使用者
             query = `${lat},${lon}`;
-            alert(`注意：${name} 無詳細地址，本次使用經緯度顯示`);
+            alert(`注意：${name} 地址資料不足，本次使用經緯度顯示`);
+        }
+        // 若營業時間是備援欄位，也提示
+        if (!t.opening_hours && (t.note || t.description || t.operator)) {
+            alert(`⚠️ ${name} 的營業時間來自 OSM 備援欄位 (note/description/operator)，可能不完整`);
         }
         handleMapClick("search", query);
     });
 
-    // 導航
+    // --- 導航 ---
     const btnNav = document.createElement("button");
     btnNav.textContent = "🚗 導航";
     btnNav.classList.add("action-btn", "nav-btn");
@@ -381,7 +381,10 @@ function createActionButtons(lat, lon, name, r) {
             dest = encodeURIComponent(fullAddress);
         } else {
             dest = `${lat},${lon}`;
-            alert(`注意：${name} 無詳細地址，本次導航使用經緯度`);
+            alert(`注意：${name} 地址資料不足，本次導航使用經緯度`);
+        }
+        if (!t.opening_hours && (t.note || t.description || t.operator)) {
+            alert(`⚠️ ${name} 的營業時間來自 OSM 備援欄位 (note/description/operator)，可能不完整`);
         }
         handleMapClick("nav", dest);
     });
@@ -454,7 +457,7 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
     if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
 }
 
-// ----- Render Restaurants -----
+// ----- Render Restaurants (整合版) -----
 function renderRestaurants(restaurants) {
     clearMarkers();
     resultsPanel.innerHTML = "";
@@ -463,71 +466,113 @@ function renderRestaurants(restaurants) {
         return;
     }
     const bounds = L.latLngBounds([]);
-    // 隨機抽三筆
     const displayRestaurants = shuffleArray(restaurants).slice(0, 3);
+
     displayRestaurants.forEach(r => {
         const t = r.tags || {};
         const lat = r.lat || r.center?.lat;
         const lon = r.lon || r.center?.lon;
         if (!lat || !lon) return;
+
         // --- Name ---
         let name = t.name || r.name || "查無資料";
+
         // --- Address ---
         let rawAddress = "";
         if (t["addr:street"] || t["addr:housenumber"]) {
             rawAddress = ((t["addr:street"] || "") + " " + (t["addr:housenumber"] || "")).trim();
+            r.addressSource = "OSM"; // 真實來源
         } else if (t["addr:full"]) {
             rawAddress = t["addr:full"];
+            r.addressSource = "OSM";
         } else if (r.geocodeAddress) {
             rawAddress = r.geocodeAddress;
+            r.addressSource = "經緯度備援";
+        } else {
+            rawAddress = "查無資料";
+            r.addressSource = null;
         }
         let address = isReliableAddress(rawAddress) ? rawAddress : "查無資料";
+
         // --- Opening Hours ---
         let hours = t.opening_hours || r.opening_hours || "查無資料";
+        let hoursSource = t.opening_hours ? "OSM" :
+                          (t.note || t.description || t.operator) ? "OSM 備援" : null;
+
         // --- Popup Content ---
         const popupContent = document.createElement("div");
         const titleEl = document.createElement("h3");
         titleEl.textContent = name;
         titleEl.className = "card-title";
         popupContent.appendChild(titleEl);
+
         const addrEl = document.createElement("p");
         addrEl.textContent = "店家地址: " + address;
         addrEl.className = "card-sub";
         popupContent.appendChild(addrEl);
+
         const hoursEl = document.createElement("p");
         hoursEl.textContent = "店家營業時間: " + hours;
         hoursEl.className = "card-sub";
         popupContent.appendChild(hoursEl);
-        const btnContainer = createActionButtons(lat, lon, name, r);
-        popupContent.appendChild(btnContainer);
-        // --- Leaflet Marker ---
+
+        // --- 資料來源備註 ---
+        if (r.addressSource || hoursSource) {
+            const sourceEl = document.createElement("p");
+            sourceEl.className = "card-sub small";
+            let sourceText = [];
+            if (r.addressSource) sourceText.push("地址來源：" + r.addressSource);
+            if (hoursSource) sourceText.push("營業時間來源：" + hoursSource);
+            sourceEl.textContent = sourceText.join("，");
+            popupContent.appendChild(sourceEl);
+        }
+
+        // --- Card & Markers ---
         const marker = L.marker([lat, lon]).addTo(map);
-        marker.bindTooltip(name, {permanent: false, direction: 'top'});
+        marker.bindTooltip(name, { permanent: false, direction: 'top' });
         currentMarkers.push(marker);
         bounds.extend([lat, lon]);
-        // --- Card in Results Panel ---
+
         const card = document.createElement("div");
         card.className = "card";
+
         const cardLeft = document.createElement("div");
         cardLeft.className = "card-left";
         const cardTitle = document.createElement("h3");
         cardTitle.textContent = name;
         cardTitle.className = "card-title";
         cardLeft.appendChild(cardTitle);
+
         const cardAddr = document.createElement("p");
         cardAddr.textContent = "店家地址: " + address;
         cardAddr.className = "card-sub";
         cardLeft.appendChild(cardAddr);
+
         const cardHours = document.createElement("p");
         cardHours.textContent = "店家營業時間: " + hours;
         cardHours.className = "card-sub";
         cardLeft.appendChild(cardHours);
+
+        // 加入資料來源備註
+        if (r.addressSource || hoursSource) {
+            const cardSource = document.createElement("p");
+            cardSource.className = "card-sub small";
+            let sourceText = [];
+            if (r.addressSource) sourceText.push("地址來源：" + r.addressSource);
+            if (hoursSource) sourceText.push("營業時間來源：" + hoursSource);
+            cardSource.textContent = sourceText.join("，");
+            cardLeft.appendChild(cardSource);
+        }
+
         card.appendChild(cardLeft);
-        // ✅ 生成新的按鈕，保證事件處理器有效
+
+        // ✅ 行動按鈕
         const cardActions = createActionButtons(lat, lon, name, r);
         card.appendChild(cardActions);
+
         resultsPanel.appendChild(card);
     });
+
     if (currentMarkers.length > 0) map.fitBounds(bounds.pad(0.3));
 }
 
@@ -660,3 +705,38 @@ function isReliableAddress(address) {
 }
 
 if (isMobile()) toggleUIForMobile(true, false);
+
+const helpBtn = document.getElementById('helpBtn'); // 你的說明按鈕
+const helpModal = document.getElementById('helpModal');
+const closeHelpBtn = document.getElementById('closeHelpBtn');
+const helpPC = document.querySelector('.help-pc');
+const helpMobile = document.querySelector('.help-mobile');
+
+function updateHelpContent() {
+    if (window.innerWidth <= 900) { // 手機
+        helpPC.style.display = 'none';
+        helpMobile.style.display = 'block';
+    } else { // 電腦
+        helpPC.style.display = 'block';
+        helpMobile.style.display = 'none';
+    }
+}
+
+// 打開說明
+helpBtn.addEventListener('click', () => {
+    updateHelpContent();
+    helpModal.classList.remove('hidden');
+});
+
+// 關閉按鈕
+closeHelpBtn.addEventListener('click', () => {
+    helpModal.classList.add('hidden');
+});
+
+// 點擊彈窗外部關閉
+helpModal.addEventListener('click', (e) => {
+    if(e.target === helpModal) helpModal.classList.add('hidden');
+});
+
+// 調整視窗大小時自動切換
+window.addEventListener('resize', updateHelpContent);

@@ -40,9 +40,7 @@
           <label for="streetInput">街道 / 門牌（可選）</label>
           <input id="streetInput" placeholder="例如：復興南路一段123號" autocomplete="off" />
           <div id="streetSuggestions" class="suggestions" aria-hidden="true"></div>
-          <div id="streetDisambiguation" style="display:none;" class="street-hint">
-            
-          </div>
+          <div id="streetDisambiguation" style="display:none;" class="street-hint"></div>
         </div>
 
         <div class="col">
@@ -77,15 +75,20 @@
             <button id="themeToggle" class="btn-toggle">
               <span class="emoji">🌙</span> 切換模式
             </button>
+
+            <!-- 新增說明按鈕 -->
+            <button id="helpBtn" class="btn-toggle">
+              <span class="emoji">❓</span> 說明
+            </button>
           </div>
         </div>
       </div> <!-- end row -->
     </section>
 
-  <!-- 手機版：重新搜尋條件 -->
-  <button id="resetSearchBtn" class="reset-search-btn">
-    🔁 重新搜尋條件
-  </button>
+    <!-- 手機版：重新搜尋條件 -->
+    <button id="resetSearchBtn" class="reset-search-btn">
+      🔁 重新搜尋條件
+    </button>
 
     <main class="main-grid">
       <div id="map" class="map"></div>
@@ -95,6 +98,32 @@
       </aside>
     </main>
   </div> <!-- end app -->
+
+  <!-- 說明彈窗 -->
+  <div id="helpModal" class="help-modal hidden">
+    <div class="help-content">
+      <h2>程式使用說明</h2>
+
+      <div class="help-pc">
+        <h3>電腦版使用方式</h3>
+        <p>1. 選擇國家 / 縣市 / 區域 / 街道 / 店家類型。</p>
+        <p>2. 設定搜尋半徑（公尺），0 表示全區搜尋。</p>
+        <p>3. 點擊「搜尋餐廳」隨機抽選餐廳。</p>
+      </div>
+
+      <div class="help-mobile">
+        <h3>手機版使用方式</h3>
+        <p>1. 可手動選擇國家 / 縣市 / 區域 / 街道 / 店家類型。</p>
+        <p>2. 或點擊「📍 取得我的位置」後，再設定搜尋半徑，系統將以你所在位置為中心搜尋附近餐廳。</p>
+        <p>3. 點擊「搜尋餐廳」隨機抽選餐廳。</p>
+      </div>
+
+      <h3>資料提醒</h3>
+      <p>店家資料來源包含 OSM、LocationIQ、Nominatim，部分資料可能缺失或不完全正確，請自行查核。</p>
+
+      <button id="closeHelpBtn" class="btn-secondary">關閉</button>
+    </div>
+  </div>
 
   <div id="loading" class="loading-overlay">
     <div class="spinner"></div>
@@ -108,5 +137,27 @@
 
   <!-- App logic -->
   <script src="script.js"></script>
+
+  <!-- 說明按鈕 JS -->
+  <script>
+    const helpBtn = document.getElementById('helpBtn');
+    const helpModal = document.getElementById('helpModal');
+    const closeHelpBtn = document.getElementById('closeHelpBtn');
+
+    helpBtn.addEventListener('click', () => {
+      helpModal.classList.remove('hidden');
+    });
+
+    closeHelpBtn.addEventListener('click', () => {
+      helpModal.classList.add('hidden');
+    });
+
+    // 點擊彈窗外部也關閉
+    helpModal.addEventListener('click', (e) => {
+      if (e.target === helpModal) {
+        helpModal.classList.add('hidden');
+      }
+    });
+  </script>
 </body>
 </html>
