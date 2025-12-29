@@ -41,6 +41,7 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, 
 let currentMarkers = [];
 let lastRestaurants = [];
 let userLocation = null;
+let hasUsedLocate = false; // ⭐ 新增：是否曾點擊「取得我的位置」
 let lastSearchCenter = null;
 let allRestaurants = [];
 let networkOnlineCache = null;
@@ -58,6 +59,7 @@ const NETWORK_TTL_FAIL = 60000;
 if (locateBtn) {
   locateBtn.addEventListener("click", async () => {
   userLocation = null;  // 強制清空位置，每次都重新嘗試
+  hasUsedLocate = true; // ⭐ 使用者明確點過定位
       if(!navigator.geolocation){
           alert("此裝置不支援定位");
           return;
@@ -89,6 +91,7 @@ if (resetBtn) {
         toggleUIForMobile(true, false);
         // 清除使用者位置
         userLocation = null;
+        hasUsedLocate = false; // ⭐ 重置定位狀態
         // 清空輸入與結果
         streetInput.value = "";
         streetSuggestions.innerHTML = "";
@@ -569,7 +572,7 @@ async function doSearch() {
         const randomResults = shuffleArray(lastRestaurants).slice(0, 3);
         renderRestaurants(randomResults);
         // 手機 UI 折疊
-        if (isMobile()) toggleUIForMobile(false, false); // false → 不隱藏半徑欄位
+        if (isMobile()) toggleUIForMobile(false, hasUsedLocate); // ⭐ 根據是否按過定位決定半徑顯示
         // 顯示重新搜尋條件按鈕
         if (resetBtn) resetBtn.style.display = "";
         // 若結果為空，才 alert
