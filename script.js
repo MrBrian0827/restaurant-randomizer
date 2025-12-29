@@ -71,7 +71,7 @@ if (locateBtn) {
             marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
             currentMarkers.push(marker);
             map.setView([userLocation.lat, userLocation.lon], 15);
-            if(isMobile()) toggleUIForMobile(false, false); // ✅ 保留半徑欄位
+            if (isMobile()) toggleUIForMobile(false, true); // ✅ 保留半徑欄位
             hideLoading(); setBusy(false);
         }, 
         (err)=>{
@@ -267,43 +267,34 @@ async function findRestaurants(lat,lon,radius=1000,type=''){
 }
 
 // ----- Merge Geocode Info -----
-async function mergeGeocodeInfo(restaurants, centerQuery) {
+async function mergeGeocodeInfo(restaurants) {
     if (!restaurants || restaurants.length === 0) return restaurants;
 
-    let geocodeData = null;
-    try {
-        geocodeData = await geocode(centerQuery);
-    } catch (e) {
-        console.warn("Geocode merge failed:", e);
+    for (const r of restaurants) {
+        const t = r.tags || {};
+        const name = t.name;
+        if (!name) continue;
+
+        // 已有可靠地址就不補
+        if (isReliableAddress(t["addr:full"])) {
+            r.geocodeAddress = t["addr:full"];
+            continue;
+        }
+
+        // 用「店名 + 城市 + 區」再查一次
+        const query = `${name} ${citySelect.value} ${districtSelect.value}`;
+
+        try {
+            const geo = await geocode(query);
+            if (geo?.raw?.display_name && isReliableAddress(geo.raw.display_name)) {
+                r.geocodeAddress = geo.raw.display_name;
+            }
+        } catch (e) {
+            console.warn("店家補地址失敗:", name);
+        }
     }
 
-    return restaurants.map(r => {
-        const t = r.tags || {};
-        r.name = t.name || r.name || "查無資料";
-
-        let fullAddr = "";
-        if (t["addr:full"]) {
-            fullAddr = t["addr:full"];
-        } else if (t["addr:street"] || t["addr:housenumber"]) {
-            fullAddr = `${t["addr:street"] || ""} ${t["addr:housenumber"] || ""}`.trim();
-        }
-
-        if (!isReliableAddress(fullAddr) && geocodeData?.raw?.display_name) {
-            fullAddr = geocodeData.raw.display_name;
-        }
-
-        if (!isReliableAddress(fullAddr)) {
-            fullAddr = `${r.lat || r.center?.lat},${r.lon || r.center?.lon}`;
-            r.addressFallback = true;
-        } else {
-            r.addressFallback = false;
-        }
-
-        r.geocodeAddress = fullAddr;
-        r.opening_hours = t.opening_hours || geocodeData?.raw?.extratags?.opening_hours || "查無資料";
-
-        return r;
-    });
+    return restaurants;
 }
 
 // ----- Levenshtein -----
@@ -411,41 +402,44 @@ function handleMapClick(type, query){
 /**
  * 切換手機版 UI
  * @param {boolean} showFull - true 顯示完整 UI，false 折疊
- * @param {boolean} keepRadius - 折疊時是否保留搜尋半徑欄位
+ * @param {boolean} keepRadius - 折疊時是否保留「搜尋半徑整組」
  */
-function toggleUIForMobile(showFull = true, hideRadius = true) {
-    const elementsToToggle = [
-        countrySelect, 
-        citySelect, 
-        districtSelect, 
-        streetInput, 
-        streetSuggestions,
-        typeSelect, 
-        radiusInput, 
+function toggleUIForMobile(showFull = true, keepRadius = false) {
+    const radiusGroup = [
+        radiusInput,
         radiusLabel,
+        document.querySelector('label[for="radiusInput"]'),
+        document.querySelector('.controls .small')
+    ];
+    const normalControls = [
+        countrySelect,
+        citySelect,
+        districtSelect,
+        streetInput,
+        streetSuggestions,
+        typeSelect,
         document.querySelector('label[for="countrySelect"]'),
         document.querySelector('label[for="citySelect"]'),
         document.querySelector('label[for="districtSelect"]'),
         document.querySelector('label[for="streetInput"]'),
-        document.querySelector('label[for="typeSelect"]'),
-        document.querySelector('label[for="radiusInput"]'),
-        document.querySelector('.controls .small') // 搜尋半徑說明
+        document.querySelector('label[for="typeSelect"]')
     ];
-
-    elementsToToggle.forEach(el => { 
-        if(el){
-            // radiusInput / radiusLabel / 說明文字只在 hideRadius 為 true 時才隱藏
-            if((el === radiusInput || el === radiusLabel || el === document.querySelector('.controls .small')) && !hideRadius) {
-                el.style.display = "";
-            } else {
-                el.style.display = showFull ? "" : "none"; 
-            }
+    // 一般欄位
+    normalControls.forEach(el => {
+        if (el) el.style.display = showFull ? "" : "none";
+    });
+    // 搜尋半徑（整組處理）
+    radiusGroup.forEach(el => {
+        if (!el) return;
+        if (showFull) {
+            el.style.display = "";
+        } else {
+            el.style.display = keepRadius ? "" : "none";
         }
     });
-
-    // 兩個按鈕永遠顯示
+    // 按鈕區
     reshuffleBtn.style.display = "";
-    if(resetBtn) resetBtn.style.display = showFull ? "none" : "";
+    if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
 }
 
 // ----- Render Restaurants -----
