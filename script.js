@@ -426,23 +426,25 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
         document.querySelector('label[for="radiusInput"]'),
         document.querySelector('.controls .small')
     ];
-    const normalControls = [
+
+    // ❗只包含「地區相關條件」，不包含餐廳類型
+    const locationControls = [
         countrySelect,
         citySelect,
         districtSelect,
         streetInput,
         streetSuggestions,
-        typeSelect,
         document.querySelector('label[for="countrySelect"]'),
         document.querySelector('label[for="citySelect"]'),
         document.querySelector('label[for="districtSelect"]'),
-        document.querySelector('label[for="streetInput"]'),
-        document.querySelector('label[for="typeSelect"]')
+        document.querySelector('label[for="streetInput"]')
     ];
-    // 一般欄位
-    normalControls.forEach(el => {
+
+    // 地區條件顯示 / 隱藏
+    locationControls.forEach(el => {
         if (el) el.style.display = showFull ? "" : "none";
     });
+
     // 搜尋半徑（整組處理）
     radiusGroup.forEach(el => {
         if (!el) return;
@@ -452,6 +454,12 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
             el.style.display = keepRadius ? "" : "none";
         }
     });
+
+    // ❗餐廳類型永遠顯示
+    if (typeSelect) typeSelect.style.display = "";
+    const typeLabel = document.querySelector('label[for="typeSelect"]');
+    if (typeLabel) typeLabel.style.display = "";
+
     // 按鈕區
     reshuffleBtn.style.display = "";
     if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
