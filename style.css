@@ -371,6 +371,13 @@ body.dark-mode .suggestion-item:hover { background: #333; }
     background: linear-gradient(135deg, #64748b, #94a3b8);
     color: #fff;
   }
+
+  /* 🔧 解決手機版卡在店家清單無法上下滑的問題 */
+  .results-panel {
+    max-height: none;     /* 取消高度限制 */
+    overflow: visible;   /* 不再自己捲動 */
+  }
+
 }
 
 /* ===== 說明彈窗 ===== */
