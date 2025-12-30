@@ -70,41 +70,75 @@ if (locateBtn) {
   locateBtn.addEventListener("click", async () => {
     userLocation = null;
     hasUsedLocate = true;
-    if(!navigator.geolocation){
-        alert("此裝置不支援定位");
-        return;
+    if (!navigator.geolocation) {
+      alert("此裝置不支援定位");
+      return;
     }
     showLoading(); setBusy(true);
+
     navigator.geolocation.getCurrentPosition(
-      async(pos)=>{
-          userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
-          clearMarkers();
+      async (pos) => {
+        userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
 
-          // --- 綠色圓形 marker ---
-          const marker = L.circleMarker([userLocation.lat, userLocation.lon], {
-              radius: 8,
-              color: "green",       // 邊框顏色
-              fillColor: "green",   // 填充顏色
-              fillOpacity: 1
+        // --- 保留使用者 marker，不清掉 ---
+        clearMarkers(true);
+
+        // --- 使用跟餐廳相同形狀的 marker，只改顏色為深綠色 ---
+        if (userLocationMarker) {
+          userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
+        } else {
+          const userIcon = new L.Icon({
+            iconUrl:
+              "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNSIgaGVpZ2h0PSI0MSI+PHBhdGggZD0iTTEyLjUsMEM1LjYxNSwwLDAsNS42MTUsMCwxMi41QzAsMjMuMjUsMTIsNDEsMTIsNDFTMTIsMjMuMjUsMTIsMTIuNUMxMi41LDUuNjE1LDE4LjM4NSwwLDEyLjUsMFoiIGZpbGw9IiMyOTg4MDAiLz48L3N2Zz4=",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowUrl: null,
+          });
+          userLocationMarker = L.marker([userLocation.lat, userLocation.lon], {
+            icon: userIcon,
           }).addTo(map);
-          marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
-          currentMarkers.push(marker);
+          userLocationMarker.bindTooltip("您目前的位置", { permanent: false, direction: "top" });
+          currentMarkers.push(userLocationMarker);
+        }
 
-          map.setView([userLocation.lat, userLocation.lon], 15);
+        map.setView([userLocation.lat, userLocation.lon], 15);
 
-          // --- 手機 UI ---
-          if(isMobile()) toggleUIForMobile(false, true); // 保留半徑欄位
+        // --- 手機 UI ---
+        if (isMobile()) toggleUIForMobile(false, true); // 保留半徑欄位
 
-          // --- 隱藏取得我的位置按鈕 ---
-          locateBtn.style.display = "none";
+        // --- 隱藏取得我的位置按鈕 ---
+        locateBtn.style.display = "none";
 
-          hideLoading(); setBusy(false);
+        hideLoading(); setBusy(false);
       },
-      (err)=>{
-          alert("無法取得定位，請確認瀏覽器允許定位權限，或重新整理頁面再嘗試");
-          hideLoading(); setBusy(false);
+      (err) => {
+        alert("無法取得定位，請確認瀏覽器允許定位權限，或重新整理頁面再嘗試");
+        hideLoading(); setBusy(false);
       }
     );
+  });
+}
+
+// --- 修改 clearMarkers 支援保留 user marker ---
+function clearMarkers(keepUser = false) {
+  currentMarkers.forEach((m) => {
+    if (keepUser && m === userLocationMarker) return;
+    map.removeLayer(m);
+  });
+  currentMarkers = keepUser ? (userLocationMarker ? [userLocationMarker] : []) : [];
+}
+
+// --- 在 resetBtn 裡恢復「取得我的位置」按鈕 ---
+if (resetBtn) {
+  resetBtn.addEventListener("click", () => {
+    toggleUIForMobile(true, false); // 展開完整 UI
+    userLocation = null; // 清掉上一個搜尋位置
+    if (locateBtn) locateBtn.style.display = ""; // ⭐ 顯示取得我的位置按鈕
+    streetInput.value = "";
+    streetSuggestions.innerHTML = "";
+    resultsPanel.innerHTML = "";
+    map.setView([25.033964, 121.564468], 13); // 回到預設地圖
   });
 }
 
@@ -134,6 +168,13 @@ if(!isMobile() && locateBtn){
 // ----- Helpers -----
 function showLoading() { if(loadingEl) loadingEl.classList.add('show'); }
 function hideLoading() { if(loadingEl) loadingEl.classList.remove('show'); }
+function clearMarkers(keepUser = false){
+    currentMarkers.forEach(m=>{
+        if(keepUser && m === userLocationMarker) return;
+        map.removeLayer(m);
+    });
+    currentMarkers = keepUser ? [userLocationMarker] : [];
+}
 function setBusy(val){
   searchBtn.disabled = val;
   reshuffleBtn.disabled = val;
@@ -491,7 +532,7 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
 
 // ----- Render Restaurants (整合版) -----
 function renderRestaurants(restaurants) {
-    clearMarkers();
+    clearMarkers(true); // 保留使用者 marker
     resultsPanel.innerHTML = "";
     if (!restaurants || restaurants.length === 0) {
         resultsPanel.textContent = "找不到符合的店家";
