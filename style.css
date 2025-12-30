@@ -422,3 +422,7 @@ body.dark-mode .suggestion-item:hover { background: #333; }
     border-radius: 50%;
     border: 2px solid white;
 }
+
+.leaflet-marker-green img {
+    filter: hue-rotate(90deg) saturate(500%); /* 調整成綠色 */
+}

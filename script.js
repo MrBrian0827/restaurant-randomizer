@@ -72,30 +72,37 @@ if (locateBtn) {
       async (pos) => {
         userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
 
-        // --- 保留使用者 marker，不清掉 ---
+        // --- 保留使用者 marker，不清掉餐廳 marker ---
         clearMarkers(true);
 
-        // --- 綠色大頭針 marker ---
+        // --- 使用 Leaflet 原本 marker，只換綠色 ---
         if (userLocationMarker) {
           userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
         } else {
-          const greenIcon = new L.Icon({
-            iconUrl:
-              "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNSIgaGVpZ2h0PSI0MSI+PHBhdGggZD0iTTEyLjUsMEM1LjYxNSwwLDAsNS42MTUsMCwxMi41QzAsMjMuMjUsMTIsNDEsMTIsNDFTMTIsMjMuMjUsMTIsMTIuNUMxMi41LDUuNjE1LDE4LjM4NSwwLDEyLjUsMFoiIGZpbGw9IiMwMDg4MDAiLz48L3N2Zz4=",
+          const userIcon = new L.Icon({
+            iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+            shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
             iconSize: [25, 41],
             iconAnchor: [12, 41],
             popupAnchor: [1, -34],
-            shadowUrl: null,
+            shadowSize: [41, 41],
+            className: "leaflet-marker-green" // 方便用 CSS 改顏色
           });
-          userLocationMarker = L.marker([userLocation.lat, userLocation.lon], { icon: greenIcon })
-            .addTo(map)
-            .bindTooltip("您目前的位置", { permanent: false, direction: "top" });
+
+          userLocationMarker = L.marker([userLocation.lat, userLocation.lon], {
+            icon: userIcon
+          }).addTo(map);
+
+          userLocationMarker.bindTooltip("您目前的位置", { permanent: false, direction: "top" });
           currentMarkers.push(userLocationMarker);
         }
 
         map.setView([userLocation.lat, userLocation.lon], 15);
 
+        // --- 手機 UI ---
         if (isMobile()) toggleUIForMobile(false, true); // 保留半徑欄位
+
+        // --- 隱藏取得我的位置按鈕 ---
         locateBtn.style.display = "none";
 
         hideLoading(); setBusy(false);
