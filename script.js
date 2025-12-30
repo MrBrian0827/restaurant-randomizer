@@ -53,6 +53,8 @@ let selectedStreetName = null;
 let streetInputTimeout;
 let streetSelectionConfirmed = false; 
 let streetInputDebounceTimeout = null; 
+let userLocationMarker = null;
+let hasLocatedUser = false;
 const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
 
@@ -66,21 +68,40 @@ if (locateBtn) {
       }
       showLoading(); setBusy(true);
       navigator.geolocation.getCurrentPosition(
-        async(pos)=>{
-            userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
-            clearMarkers();
-            const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
-            marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
-            currentMarkers.push(marker);
+        async (pos) => {
+            userLocation = {
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude
+            };
+
+            // ❗不要 clearMarkers()，避免把餐廳清掉
+
+            // ===== 使用者位置 marker（獨立存在）=====
+            if (userLocationMarker) {
+            userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
+            } else {
+            userLocationMarker = L.marker(
+                [userLocation.lat, userLocation.lon]
+            ).addTo(map);
+            userLocationMarker.bindTooltip("您目前的位置", {
+                permanent: false,
+                direction: "top"
+            });
+            }
+
             map.setView([userLocation.lat, userLocation.lon], 15);
-            if(isMobile()) toggleUIForMobile(false, true); // ✅ 保留半徑欄位
-            hideLoading(); setBusy(false);
-        }, 
-        (err)=>{
-            alert("無法取得定位，請確認瀏覽器允許定位權限，或重新整理頁面再嘗試");
-            hideLoading(); setBusy(false);
+
+            if (isMobile()) toggleUIForMobile(false, true);
+
+            hideLoading();
+            setBusy(false);
+        },
+        (err) => {
+            alert("無法取得定位，請確認瀏覽器允許定位權限");
+            hideLoading();
+            setBusy(false);
         }
-      );
+        );
   });
 }
 
