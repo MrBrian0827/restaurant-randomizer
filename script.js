@@ -72,20 +72,24 @@ if (locateBtn) {
       async (pos) => {
         userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
 
-        // 保留使用者 marker，不清掉
+        // --- 保留使用者 marker，不清掉 ---
         clearMarkers(true);
 
-        // 綠色圓形 marker
+        // --- 綠色大頭針 marker ---
         if (userLocationMarker) {
           userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
         } else {
-          userLocationMarker = L.circleMarker([userLocation.lat, userLocation.lon], {
-            radius: 8,
-            color: "green",
-            fillColor: "green",
-            fillOpacity: 1
-          }).addTo(map);
-          userLocationMarker.bindTooltip("您目前的位置", { permanent: false, direction: "top" });
+          const greenIcon = new L.Icon({
+            iconUrl:
+              "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNSIgaGVpZ2h0PSI0MSI+PHBhdGggZD0iTTEyLjUsMEM1LjYxNSwwLDAsNS42MTUsMCwxMi41QzAsMjMuMjUsMTIsNDEsMTIsNDFTMTIsMjMuMjUsMTIsMTIuNUMxMi41LDUuNjE1LDE4LjM4NSwwLDEyLjUsMFoiIGZpbGw9IiMwMDg4MDAiLz48L3N2Zz4=",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowUrl: null,
+          });
+          userLocationMarker = L.marker([userLocation.lat, userLocation.lon], { icon: greenIcon })
+            .addTo(map)
+            .bindTooltip("您目前的位置", { permanent: false, direction: "top" });
           currentMarkers.push(userLocationMarker);
         }
 
@@ -521,14 +525,15 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
     if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
 }
 
-// ----- Render Restaurants (整合版) -----
+// ----- Render Restaurants (藍色餐廳大頭針) -----
 function renderRestaurants(restaurants) {
-    clearMarkers(true); // 保留使用者 marker
+    clearMarkers(true); // ⭐ 保留使用者定位點
     resultsPanel.innerHTML = "";
     if (!restaurants || restaurants.length === 0) {
         resultsPanel.textContent = "找不到符合的店家";
         return;
     }
+
     const bounds = L.latLngBounds([]);
     const displayRestaurants = shuffleArray(restaurants).slice(0, 3);
 
@@ -538,8 +543,10 @@ function renderRestaurants(restaurants) {
         const lon = r.lon || r.center?.lon;
         if (!lat || !lon) return;
 
+        // --- 店名 ---
         let name = t.name || r.name || "查無資料";
 
+        // --- 地址 ---
         let rawAddress = "";
         if (t["addr:street"] || t["addr:housenumber"]) {
             rawAddress = ((t["addr:street"] || "") + " " + (t["addr:housenumber"] || "")).trim();
@@ -556,22 +563,18 @@ function renderRestaurants(restaurants) {
         }
         let address = isReliableAddress(rawAddress) ? rawAddress : "查無資料";
 
+        // --- 營業時間 ---
         let hours = t.opening_hours || r.opening_hours || "查無資料";
         let hoursSource = t.opening_hours ? "OSM" :
                           (t.note || t.description || t.operator) ? "OSM 備援" : null;
 
-        // 藍色圓形餐廳 marker
-        const marker = L.circleMarker([lat, lon], {
-            radius: 8,
-            color: "blue",      // 邊框顏色
-            fillColor: "blue",  // 填充顏色
-            fillOpacity: 1
-        }).addTo(map);
+        // --- 創建藍色餐廳 marker ---
+        const marker = L.marker([lat, lon]).addTo(map);
         marker.bindTooltip(name, { permanent: false, direction: 'top' });
         currentMarkers.push(marker);
         bounds.extend([lat, lon]);
 
-        // --- Card ---
+        // --- 建立餐廳卡片 ---
         const card = document.createElement("div");
         card.className = "card";
 
@@ -593,6 +596,7 @@ function renderRestaurants(restaurants) {
         cardHours.className = "card-sub";
         cardLeft.appendChild(cardHours);
 
+        // 資料來源備註
         if (r.addressSource || hoursSource) {
             const cardSource = document.createElement("p");
             cardSource.className = "card-sub small";
