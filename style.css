@@ -407,3 +407,27 @@ body.dark-mode .suggestion-item:hover { background: #333; }
   width: 100%;
   justify-content: center;
 }
+
+/* 手機版結果卡片優化 */
+@media (max-width: 900px) {
+    .results-panel {
+        overflow-y: auto;
+        max-height: 50vh; /* 手機可上下滑動 */
+        padding: 8px;
+    }
+
+    .card {
+        display: flex;
+        flex-direction: column;
+        max-height: 220px; /* 單個卡片最大高度 */
+        margin-bottom: 12px;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        overflow: hidden;
+    }
+
+    .card-left {
+        overflow-y: auto; /* 內部可滾動 */
+        padding-right: 8px;
+    }
+}
