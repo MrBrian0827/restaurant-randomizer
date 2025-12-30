@@ -53,87 +53,34 @@ let selectedStreetName = null;
 let streetInputTimeout;
 let streetSelectionConfirmed = false; 
 let streetInputDebounceTimeout = null; 
-let userLocationMarker = null;
-let hasLocatedUser = false;
 const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
 
 if (locateBtn) {
   locateBtn.addEventListener("click", async () => {
-    userLocation = null;
-    hasUsedLocate = true;
-    if (!navigator.geolocation) {
-      alert("此裝置不支援定位");
-      return;
-    }
-    showLoading(); setBusy(true);
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-
-        // 保留其他 marker，不清掉使用者位置
-        clearMarkers(true);
-
-        // 綠色原生大頭針 (SVG)
-        if (userLocationMarker) {
-          userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
-        } else {
-          const userIcon = L.divIcon({
-            className: "user-marker",
-            html: `
-              <svg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41">
-                <path d="M12.5 0C5.615 0 0 5.615 0 12.5 0 23.25 12 41 12 41S12 23.25 12 12.5C12.5 5.615 18.385 0 12.5 0Z" fill="#28a745"/>
-              </svg>
-            `,
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34]
-          });
-          userLocationMarker = L.marker([userLocation.lat, userLocation.lon], {
-            icon: userIcon
-          }).addTo(map);
-          userLocationMarker.bindTooltip("您目前的位置", { permanent: false, direction: "top" });
-          currentMarkers.push(userLocationMarker);
-        }
-
-        map.setView([userLocation.lat, userLocation.lon], 15);
-
-        // 手機 UI
-        if (isMobile()) toggleUIForMobile(false, true);
-
-        // 隱藏取得我的位置按鈕
-        locateBtn.style.display = "none";
-
-        hideLoading(); setBusy(false);
-      },
-      (err) => {
-        alert("無法取得定位，請確認瀏覽器允許定位權限，或重新整理頁面再嘗試");
-        hideLoading(); setBusy(false);
+  userLocation = null;  // 強制清空位置，每次都重新嘗試
+  hasUsedLocate = true; // ⭐ 使用者明確點過定位
+      if(!navigator.geolocation){
+          alert("此裝置不支援定位");
+          return;
       }
-    );
-  });
-}
-
-// --- 修改 clearMarkers 支援保留 user marker ---
-function clearMarkers(keepUser = false) {
-  currentMarkers.forEach((m) => {
-    if (keepUser && m === userLocationMarker) return;
-    map.removeLayer(m);
-  });
-  currentMarkers = keepUser ? (userLocationMarker ? [userLocationMarker] : []) : [];
-}
-
-// --- 在 resetBtn 裡恢復「取得我的位置」按鈕 ---
-if (resetBtn) {
-  resetBtn.addEventListener("click", () => {
-    toggleUIForMobile(true, false); // 展開完整 UI
-    userLocation = null; // 清掉上一個搜尋位置
-    if (locateBtn) locateBtn.style.display = ""; // ⭐ 顯示取得我的位置按鈕
-    streetInput.value = "";
-    streetSuggestions.innerHTML = "";
-    resultsPanel.innerHTML = "";
-    map.setView([25.033964, 121.564468], 13); // 回到預設地圖
+      showLoading(); setBusy(true);
+      navigator.geolocation.getCurrentPosition(
+        async(pos)=>{
+            userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
+            clearMarkers();
+            const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
+            marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
+            currentMarkers.push(marker);
+            map.setView([userLocation.lat, userLocation.lon], 15);
+            if(isMobile()) toggleUIForMobile(false, true); // ✅ 保留半徑欄位
+            hideLoading(); setBusy(false);
+        }, 
+        (err)=>{
+            alert("無法取得定位，請確認瀏覽器允許定位權限，或重新整理頁面再嘗試");
+            hideLoading(); setBusy(false);
+        }
+      );
   });
 }
 
@@ -151,8 +98,8 @@ if (resetBtn) {
         resultsPanel.innerHTML = "";
         // 回到預設地圖
         map.setView([25.033964, 121.564468], 13);
-        // --- 重新顯示定位按鈕 ---
-        locateBtn.style.display = "";
+        // 移除地圖上的大頭針
+        clearMarkers();
     });
 }
 
@@ -163,13 +110,6 @@ if(!isMobile() && locateBtn){
 // ----- Helpers -----
 function showLoading() { if(loadingEl) loadingEl.classList.add('show'); }
 function hideLoading() { if(loadingEl) loadingEl.classList.remove('show'); }
-function clearMarkers(keepUser = false){
-    currentMarkers.forEach(m=>{
-        if(keepUser && m === userLocationMarker) return;
-        map.removeLayer(m);
-    });
-    currentMarkers = keepUser ? [userLocationMarker] : [];
-}
 function setBusy(val){
   searchBtn.disabled = val;
   reshuffleBtn.disabled = val;
@@ -377,14 +317,7 @@ async function mergeGeocodeInfo(restaurants, centerQuery) {
 function levenshtein(a,b){if(a.length===0) return b.length; if(b.length===0) return a.length; const matrix=[]; for(let i=0;i<=b.length;i++) matrix[i]=[i]; for(let j=0;j<=a.length;j++) matrix[0][j]=j; for(let i=1;i<=b.length;i++){for(let j=1;j<=a.length;j++){matrix[i][j]=b.charAt(i-1)===a.charAt(j-1)?matrix[i-1][j-1]:Math.min(matrix[i-1][j-1]+1,matrix[i][j-1]+1,matrix[i-1][j]+1);}} return matrix[b.length][a.length]; }
 
 // ----- Map / Marker -----
-function clearMarkers(keepUser = false){
-    currentMarkers.forEach(m=>{
-        if(keepUser && m === userLocationMarker) return;
-        map.removeLayer(m);
-    });
-    currentMarkers = keepUser ? (userLocationMarker ? [userLocationMarker] : []) : [];
-}
-
+function clearMarkers(){ currentMarkers.forEach(m=>map.removeLayer(m)); currentMarkers=[]; }
 function isWithinBounds(lat,lon,bbox,polygonGeo){
   if(bbox){ const [south,north,west,east]=bbox; if(lat<south||lat>north||lon<west||lon>east) return false; }
   if(polygonGeo && !pointInPolygon([lon,lat],polygonGeo)) return false;
@@ -532,15 +465,14 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
     if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
 }
 
-// ----- Render Restaurants (藍色餐廳大頭針) -----
+// ----- Render Restaurants (整合版) -----
 function renderRestaurants(restaurants) {
-    clearMarkers(true); // ⭐ 保留使用者定位點
+    clearMarkers();
     resultsPanel.innerHTML = "";
     if (!restaurants || restaurants.length === 0) {
         resultsPanel.textContent = "找不到符合的店家";
         return;
     }
-
     const bounds = L.latLngBounds([]);
     const displayRestaurants = shuffleArray(restaurants).slice(0, 3);
 
@@ -550,14 +482,14 @@ function renderRestaurants(restaurants) {
         const lon = r.lon || r.center?.lon;
         if (!lat || !lon) return;
 
-        // --- 店名 ---
+        // --- Name ---
         let name = t.name || r.name || "查無資料";
 
-        // --- 地址 ---
+        // --- Address ---
         let rawAddress = "";
         if (t["addr:street"] || t["addr:housenumber"]) {
             rawAddress = ((t["addr:street"] || "") + " " + (t["addr:housenumber"] || "")).trim();
-            r.addressSource = "OSM";
+            r.addressSource = "OSM"; // 真實來源
         } else if (t["addr:full"]) {
             rawAddress = t["addr:full"];
             r.addressSource = "OSM";
@@ -570,24 +502,50 @@ function renderRestaurants(restaurants) {
         }
         let address = isReliableAddress(rawAddress) ? rawAddress : "查無資料";
 
-        // --- 營業時間 ---
+        // --- Opening Hours ---
         let hours = t.opening_hours || r.opening_hours || "查無資料";
         let hoursSource = t.opening_hours ? "OSM" :
                           (t.note || t.description || t.operator) ? "OSM 備援" : null;
 
-        // --- 創建藍色餐廳 marker ---
+        // --- Popup Content ---
+        const popupContent = document.createElement("div");
+        const titleEl = document.createElement("h3");
+        titleEl.textContent = name;
+        titleEl.className = "card-title";
+        popupContent.appendChild(titleEl);
+
+        const addrEl = document.createElement("p");
+        addrEl.textContent = "店家地址: " + address;
+        addrEl.className = "card-sub";
+        popupContent.appendChild(addrEl);
+
+        const hoursEl = document.createElement("p");
+        hoursEl.textContent = "店家營業時間: " + hours;
+        hoursEl.className = "card-sub";
+        popupContent.appendChild(hoursEl);
+
+        // --- 資料來源備註 ---
+        if (r.addressSource || hoursSource) {
+            const sourceEl = document.createElement("p");
+            sourceEl.className = "card-sub small";
+            let sourceText = [];
+            if (r.addressSource) sourceText.push("地址來源：" + r.addressSource);
+            if (hoursSource) sourceText.push("營業時間來源：" + hoursSource);
+            sourceEl.textContent = sourceText.join("，");
+            popupContent.appendChild(sourceEl);
+        }
+
+        // --- Card & Markers ---
         const marker = L.marker([lat, lon]).addTo(map);
         marker.bindTooltip(name, { permanent: false, direction: 'top' });
         currentMarkers.push(marker);
         bounds.extend([lat, lon]);
 
-        // --- 建立餐廳卡片 ---
         const card = document.createElement("div");
         card.className = "card";
 
         const cardLeft = document.createElement("div");
         cardLeft.className = "card-left";
-
         const cardTitle = document.createElement("h3");
         cardTitle.textContent = name;
         cardTitle.className = "card-title";
@@ -603,7 +561,7 @@ function renderRestaurants(restaurants) {
         cardHours.className = "card-sub";
         cardLeft.appendChild(cardHours);
 
-        // 資料來源備註
+        // 加入資料來源備註
         if (r.addressSource || hoursSource) {
             const cardSource = document.createElement("p");
             cardSource.className = "card-sub small";
@@ -628,7 +586,7 @@ function renderRestaurants(restaurants) {
 
 // ----- Main Search -----
 async function doSearch() {
-    clearMarkers(true); // 搜尋餐廳前保留使用者 marker
+    // 每次搜尋前清除先前使用者位置（除非是點取得位置）
     const isUsingUserLocation = !!userLocation;
     showLoading();
     setBusy(true);
