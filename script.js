@@ -426,25 +426,23 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
         document.querySelector('label[for="radiusInput"]'),
         document.querySelector('.controls .small')
     ];
-
-    // ❗只包含「地區相關條件」，不包含餐廳類型
-    const locationControls = [
+    const normalControls = [
         countrySelect,
         citySelect,
         districtSelect,
         streetInput,
         streetSuggestions,
+        typeSelect,
         document.querySelector('label[for="countrySelect"]'),
         document.querySelector('label[for="citySelect"]'),
         document.querySelector('label[for="districtSelect"]'),
-        document.querySelector('label[for="streetInput"]')
+        document.querySelector('label[for="streetInput"]'),
+        document.querySelector('label[for="typeSelect"]')
     ];
-
-    // 地區條件顯示 / 隱藏
-    locationControls.forEach(el => {
+    // 一般欄位
+    normalControls.forEach(el => {
         if (el) el.style.display = showFull ? "" : "none";
     });
-
     // 搜尋半徑（整組處理）
     radiusGroup.forEach(el => {
         if (!el) return;
@@ -454,12 +452,6 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
             el.style.display = keepRadius ? "" : "none";
         }
     });
-
-    // ❗餐廳類型永遠顯示
-    if (typeSelect) typeSelect.style.display = "";
-    const typeLabel = document.querySelector('label[for="typeSelect"]');
-    if (typeLabel) typeLabel.style.display = "";
-
     // 按鈕區
     reshuffleBtn.style.display = "";
     if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
@@ -674,16 +666,43 @@ radiusInput.addEventListener("input", () => {
 });
 
 // ----- Street Autocomplete -----
-streetInput.addEventListener("input",(e)=>{
-  if(streetInputDebounceTimeout) clearTimeout(streetInputDebounceTimeout);
-  streetInputDebounceTimeout=setTimeout(()=>{
-    const val=e.target.value.trim().toLowerCase(); streetSuggestions.innerHTML=""; if(!val) return;
-    const streets=taiwanData[citySelect.value]||[]; similarStreets=streets.filter(s=>s.toLowerCase().includes(val)).slice(0,5);
-    similarStreets.forEach(st=>{
-      const li=document.createElement("li"); li.textContent=st; li.addEventListener("click",()=>{ streetInput.value=st; streetSuggestions.innerHTML=""; }); streetSuggestions.appendChild(li);
+streetInput.addEventListener("input", (e) => {
+    const val = e.target.value.trim();
+    streetSuggestions.innerHTML = "";
+
+    if(val.length > 0){
+        // 顯示半徑
+        radiusInput.style.display = "";
+        radiusLabel.style.display = "";
+        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+        if(radiusLabelEl) radiusLabelEl.style.display = "";
+    } else {
+        // 隱藏半徑
+        radiusInput.style.display = "none";
+        radiusLabel.style.display = "none";
+        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+        if(radiusLabelEl) radiusLabelEl.style.display = "none";
+    }
+
+    // 街道建議邏輯不變
+    const streets = taiwanData[citySelect.value] || [];
+    similarStreets = streets.filter(s => s.toLowerCase().includes(val.toLowerCase())).slice(0,5);
+    similarStreets.forEach(st => {
+        const li = document.createElement("li");
+        li.textContent = st;
+        li.addEventListener("click", () => {
+            streetInput.value = st;
+            streetSuggestions.innerHTML = "";
+            // 點選後顯示半徑
+            radiusInput.style.display = "";
+            radiusLabel.style.display = "";
+            const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+            if(radiusLabelEl) radiusLabelEl.style.display = "";
+        });
+        streetSuggestions.appendChild(li);
     });
-  },300);
 });
+
 document.addEventListener("click",(e)=>{ if(!streetInput.contains(e.target)) streetSuggestions.innerHTML=""; });
 
 // ----- Initial Radius -----
@@ -694,6 +713,7 @@ window.addEventListener("beforeunload", () => {
 
 /**
  * 判斷地址是否「可信可用於 Google Maps search」
+ * 適用於台灣與日本
  * @param {string} address
  * @returns {boolean}
  */
@@ -701,14 +721,23 @@ function isReliableAddress(address) {
     if (!address) return false;
     const addr = String(address).trim();
     if (addr === "" || addr === "查無資料") return false;
-    // 排除只有行政區的地址
-    const adminOnlyPattern = /^(.*(縣|市))?\s*(.*(區|鄉|鎮|市))(\s*,?\s*臺灣)?$/;
+
+    // 排除只有行政區的地址（台灣/日本行政區皆考慮）
+    const adminOnlyPattern = /^(.*(縣|市|都|道|府))?\s*(.*(區|鄉|鎮|町|村|市))(\s*,?\s*(臺灣|日本))?$/;
     if (adminOnlyPattern.test(addr)) return false;
-    // 台灣常見地址關鍵字
-    const keywords = ["路","街","巷","弄","號","段","大道","橋","大樓"];
+
+    // 常見地址關鍵字（台灣/日本）
+    const keywords = [
+        // 台灣
+        "路","街","巷","弄","號","段","大道","橋","大樓",
+        // 日本
+        "丁目","番地","号","通り","ビル","町","区","村","市","駅"
+    ];
     if (!keywords.some(k => addr.includes(k))) return false;
-    // 防呆：只要有數字就算，允許中文逗號
-    if (!/\d/.test(addr)) return false;
+
+    // 可以選擇保留數字判斷作為輔助，但不必要
+    // if (!/\d/.test(addr)) return false;
+
     return true;
 }
 
@@ -748,3 +777,9 @@ helpModal.addEventListener('click', (e) => {
 
 // 調整視窗大小時自動切換
 window.addEventListener('resize', updateHelpContent);
+
+// 初始隱藏半徑
+radiusInput.style.display = "none";
+radiusLabel.style.display = "none";
+const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+if(radiusLabelEl) radiusLabelEl.style.display = "none";
