@@ -72,35 +72,26 @@ if (locateBtn) {
       async (pos) => {
         userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
 
-        // --- 保留使用者 marker，不清掉 ---
+        // 保留使用者 marker，不清掉
         clearMarkers(true);
 
-        // --- 使用跟餐廳相同形狀的 marker，只改顏色為深綠色 ---
+        // 綠色圓形 marker
         if (userLocationMarker) {
           userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
         } else {
-          if(userLocationMarker){
-                userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
-            }else{
-                userLocationMarker = L.circleMarker([userLocation.lat, userLocation.lon], {
-                    radius: 10,
-                    color: "#006400",     // 邊框顏色
-                    fillColor: "#006400", // 填充顏色
-                    fillOpacity: 0.9
-                }).addTo(map);
-                userLocationMarker.bindTooltip("您目前的位置", { permanent:false, direction:'top' });
-                currentMarkers.push(userLocationMarker);
-            }
+          userLocationMarker = L.circleMarker([userLocation.lat, userLocation.lon], {
+            radius: 8,
+            color: "green",
+            fillColor: "green",
+            fillOpacity: 1
+          }).addTo(map);
           userLocationMarker.bindTooltip("您目前的位置", { permanent: false, direction: "top" });
           currentMarkers.push(userLocationMarker);
         }
 
         map.setView([userLocation.lat, userLocation.lon], 15);
 
-        // --- 手機 UI ---
         if (isMobile()) toggleUIForMobile(false, true); // 保留半徑欄位
-
-        // --- 隱藏取得我的位置按鈕 ---
         locateBtn.style.display = "none";
 
         hideLoading(); setBusy(false);
@@ -538,8 +529,7 @@ function renderRestaurants(restaurants) {
         resultsPanel.textContent = "找不到符合的店家";
         return;
     }
-    const bounds = L.latLngBounds(displayRestaurants.map(r => [r.lat||r.center?.lat, r.lon||r.center?.lon]));
-    if(userLocation) bounds.extend([userLocation.lat, userLocation.lon]); // 包含使用者位置
+    const bounds = L.latLngBounds([]);
     const displayRestaurants = shuffleArray(restaurants).slice(0, 3);
 
     displayRestaurants.forEach(r => {
@@ -548,14 +538,12 @@ function renderRestaurants(restaurants) {
         const lon = r.lon || r.center?.lon;
         if (!lat || !lon) return;
 
-        // --- Name ---
         let name = t.name || r.name || "查無資料";
 
-        // --- Address ---
         let rawAddress = "";
         if (t["addr:street"] || t["addr:housenumber"]) {
             rawAddress = ((t["addr:street"] || "") + " " + (t["addr:housenumber"] || "")).trim();
-            r.addressSource = "OSM"; // 真實來源
+            r.addressSource = "OSM";
         } else if (t["addr:full"]) {
             rawAddress = t["addr:full"];
             r.addressSource = "OSM";
@@ -568,51 +556,28 @@ function renderRestaurants(restaurants) {
         }
         let address = isReliableAddress(rawAddress) ? rawAddress : "查無資料";
 
-        // --- Opening Hours ---
         let hours = t.opening_hours || r.opening_hours || "查無資料";
         let hoursSource = t.opening_hours ? "OSM" :
                           (t.note || t.description || t.operator) ? "OSM 備援" : null;
 
-        // --- Popup Content ---
-        const popupContent = document.createElement("div");
-        const titleEl = document.createElement("h3");
-        titleEl.textContent = name;
-        titleEl.className = "card-title";
-        popupContent.appendChild(titleEl);
-
-        const addrEl = document.createElement("p");
-        addrEl.textContent = "店家地址: " + address;
-        addrEl.className = "card-sub";
-        popupContent.appendChild(addrEl);
-
-        const hoursEl = document.createElement("p");
-        hoursEl.textContent = "店家營業時間: " + hours;
-        hoursEl.className = "card-sub";
-        popupContent.appendChild(hoursEl);
-
-        // --- 資料來源備註 ---
-        if (r.addressSource || hoursSource) {
-            const sourceEl = document.createElement("p");
-            sourceEl.className = "card-sub small";
-            let sourceText = [];
-            if (r.addressSource) sourceText.push("地址來源：" + r.addressSource);
-            if (hoursSource) sourceText.push("營業時間來源：" + hoursSource);
-            sourceEl.textContent = sourceText.join("，");
-            popupContent.appendChild(sourceEl);
-        }
-
-        // --- Card & Markers ---
-        const marker = L.marker([lat, lon]).addTo(map);
+        // 藍色圓形餐廳 marker
+        const marker = L.circleMarker([lat, lon], {
+            radius: 8,
+            color: "blue",      // 邊框顏色
+            fillColor: "blue",  // 填充顏色
+            fillOpacity: 1
+        }).addTo(map);
         marker.bindTooltip(name, { permanent: false, direction: 'top' });
-        const marker = L.marker([lat, lon]).addTo(map);
-        marker.bindTooltip(name, { permanent: false, direction: 'top' });
-        currentMarkers.push(marker); // 只 push餐廳 marker
+        currentMarkers.push(marker);
+        bounds.extend([lat, lon]);
 
+        // --- Card ---
         const card = document.createElement("div");
         card.className = "card";
 
         const cardLeft = document.createElement("div");
         cardLeft.className = "card-left";
+
         const cardTitle = document.createElement("h3");
         cardTitle.textContent = name;
         cardTitle.className = "card-title";
@@ -628,7 +593,6 @@ function renderRestaurants(restaurants) {
         cardHours.className = "card-sub";
         cardLeft.appendChild(cardHours);
 
-        // 加入資料來源備註
         if (r.addressSource || hoursSource) {
             const cardSource = document.createElement("p");
             cardSource.className = "card-sub small";
@@ -648,7 +612,7 @@ function renderRestaurants(restaurants) {
         resultsPanel.appendChild(card);
     });
 
-    map.fitBounds(bounds.pad(0.3));
+    if (currentMarkers.length > 0) map.fitBounds(bounds.pad(0.3));
 }
 
 // ----- Main Search -----
