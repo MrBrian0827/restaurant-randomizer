@@ -72,37 +72,37 @@ if (locateBtn) {
       async (pos) => {
         userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
 
-        // --- 保留使用者 marker，不清掉餐廳 marker ---
+        // 保留其他 marker，不清掉使用者位置
         clearMarkers(true);
 
-        // --- 使用 Leaflet 原本 marker，只換綠色 ---
+        // 綠色原生大頭針 (SVG)
         if (userLocationMarker) {
           userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
         } else {
-          const userIcon = new L.Icon({
-            iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-            shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+          const userIcon = L.divIcon({
+            className: "user-marker",
+            html: `
+              <svg xmlns="http://www.w3.org/2000/svg" width="25" height="41" viewBox="0 0 25 41">
+                <path d="M12.5 0C5.615 0 0 5.615 0 12.5 0 23.25 12 41 12 41S12 23.25 12 12.5C12.5 5.615 18.385 0 12.5 0Z" fill="#28a745"/>
+              </svg>
+            `,
             iconSize: [25, 41],
             iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowSize: [41, 41],
-            className: "leaflet-marker-green" // 方便用 CSS 改顏色
+            popupAnchor: [1, -34]
           });
-
           userLocationMarker = L.marker([userLocation.lat, userLocation.lon], {
             icon: userIcon
           }).addTo(map);
-
           userLocationMarker.bindTooltip("您目前的位置", { permanent: false, direction: "top" });
           currentMarkers.push(userLocationMarker);
         }
 
         map.setView([userLocation.lat, userLocation.lon], 15);
 
-        // --- 手機 UI ---
-        if (isMobile()) toggleUIForMobile(false, true); // 保留半徑欄位
+        // 手機 UI
+        if (isMobile()) toggleUIForMobile(false, true);
 
-        // --- 隱藏取得我的位置按鈕 ---
+        // 隱藏取得我的位置按鈕
         locateBtn.style.display = "none";
 
         hideLoading(); setBusy(false);
