@@ -414,3 +414,11 @@ body.dark-mode .suggestion-item:hover { background: #333; }
   width: 100%;
   justify-content: center;
 }
+
+.user-marker div {
+    width: 25px;
+    height: 41px;
+    background-color: green;  /* 使用者位置顏色 */
+    border-radius: 50%;
+    border: 2px solid white;
+}
