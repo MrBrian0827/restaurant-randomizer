@@ -58,14 +58,6 @@ let hasLocatedUser = false;
 const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
 
-const userLocationIcon = L.divIcon({
-    className: "user-marker",
-    html: "<div></div>",
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34]
-});
-
 if (locateBtn) {
   locateBtn.addEventListener("click", async () => {
     userLocation = null;
@@ -87,17 +79,18 @@ if (locateBtn) {
         if (userLocationMarker) {
           userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
         } else {
-          const userIcon = new L.Icon({
-            iconUrl:
-              "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNSIgaGVpZ2h0PSI0MSI+PHBhdGggZD0iTTEyLjUsMEM1LjYxNSwwLDAsNS42MTUsMCwxMi41QzAsMjMuMjUsMTIsNDEsMTIsNDFTMTIsMjMuMjUsMTIsMTIuNUMxMi41LDUuNjE1LDE4LjM4NSwwLDEyLjUsMFoiIGZpbGw9IiMyOTg4MDAiLz48L3N2Zz4=",
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowUrl: null,
-          });
-          userLocationMarker = L.marker([userLocation.lat, userLocation.lon], {
-            icon: userIcon,
-          }).addTo(map);
+          if(userLocationMarker){
+                userLocationMarker.setLatLng([userLocation.lat, userLocation.lon]);
+            }else{
+                userLocationMarker = L.circleMarker([userLocation.lat, userLocation.lon], {
+                    radius: 10,
+                    color: "#006400",     // 邊框顏色
+                    fillColor: "#006400", // 填充顏色
+                    fillOpacity: 0.9
+                }).addTo(map);
+                userLocationMarker.bindTooltip("您目前的位置", { permanent:false, direction:'top' });
+                currentMarkers.push(userLocationMarker);
+            }
           userLocationMarker.bindTooltip("您目前的位置", { permanent: false, direction: "top" });
           currentMarkers.push(userLocationMarker);
         }
@@ -382,7 +375,14 @@ async function mergeGeocodeInfo(restaurants, centerQuery) {
 function levenshtein(a,b){if(a.length===0) return b.length; if(b.length===0) return a.length; const matrix=[]; for(let i=0;i<=b.length;i++) matrix[i]=[i]; for(let j=0;j<=a.length;j++) matrix[0][j]=j; for(let i=1;i<=b.length;i++){for(let j=1;j<=a.length;j++){matrix[i][j]=b.charAt(i-1)===a.charAt(j-1)?matrix[i-1][j-1]:Math.min(matrix[i-1][j-1]+1,matrix[i][j-1]+1,matrix[i-1][j]+1);}} return matrix[b.length][a.length]; }
 
 // ----- Map / Marker -----
-function clearMarkers(){ currentMarkers.forEach(m=>map.removeLayer(m)); currentMarkers=[]; }
+function clearMarkers(keepUser = false){
+    currentMarkers.forEach(m=>{
+        if(keepUser && m === userLocationMarker) return;
+        map.removeLayer(m);
+    });
+    currentMarkers = keepUser ? (userLocationMarker ? [userLocationMarker] : []) : [];
+}
+
 function isWithinBounds(lat,lon,bbox,polygonGeo){
   if(bbox){ const [south,north,west,east]=bbox; if(lat<south||lat>north||lon<west||lon>east) return false; }
   if(polygonGeo && !pointInPolygon([lon,lat],polygonGeo)) return false;
@@ -538,7 +538,8 @@ function renderRestaurants(restaurants) {
         resultsPanel.textContent = "找不到符合的店家";
         return;
     }
-    const bounds = L.latLngBounds([]);
+    const bounds = L.latLngBounds(displayRestaurants.map(r => [r.lat||r.center?.lat, r.lon||r.center?.lon]));
+    if(userLocation) bounds.extend([userLocation.lat, userLocation.lon]); // 包含使用者位置
     const displayRestaurants = shuffleArray(restaurants).slice(0, 3);
 
     displayRestaurants.forEach(r => {
@@ -603,8 +604,9 @@ function renderRestaurants(restaurants) {
         // --- Card & Markers ---
         const marker = L.marker([lat, lon]).addTo(map);
         marker.bindTooltip(name, { permanent: false, direction: 'top' });
-        currentMarkers.push(marker);
-        bounds.extend([lat, lon]);
+        const marker = L.marker([lat, lon]).addTo(map);
+        marker.bindTooltip(name, { permanent: false, direction: 'top' });
+        currentMarkers.push(marker); // 只 push餐廳 marker
 
         const card = document.createElement("div");
         card.className = "card";
@@ -646,12 +648,12 @@ function renderRestaurants(restaurants) {
         resultsPanel.appendChild(card);
     });
 
-    if (currentMarkers.length > 0) map.fitBounds(bounds.pad(0.3));
+    map.fitBounds(bounds.pad(0.3));
 }
 
 // ----- Main Search -----
 async function doSearch() {
-    // 每次搜尋前清除先前使用者位置（除非是點取得位置）
+    clearMarkers(true); // 搜尋餐廳前保留使用者 marker
     const isUsingUserLocation = !!userLocation;
     showLoading();
     setBusy(true);
