@@ -55,8 +55,6 @@ let streetSelectionConfirmed = false;
 let streetInputDebounceTimeout = null; 
 const NETWORK_TTL_OK = 15000;
 const NETWORK_TTL_FAIL = 60000;
-let overlayMap = null;          // 懸浮地圖物件
-let overlayMarkers = [];        // 懸浮地圖 marker
 
 if (locateBtn) {
   locateBtn.addEventListener("click", async () => {
@@ -68,33 +66,21 @@ if (locateBtn) {
       }
       showLoading(); setBusy(true);
       navigator.geolocation.getCurrentPosition(
-        async(pos) => {
-            userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        async(pos)=>{
+            userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
             clearMarkers();
-                if(isMobile()){
-                    mapOverlay.classList.add("show");
-                    initOverlayMap(userLocation.lat, userLocation.lon, 17);
-                    const marker = L.marker([userLocation.lat, userLocation.lon])
-                        .addTo(overlayMap)
-                        .bindTooltip("您目前的位置", { permanent:false, direction:'top' });
-                    overlayMarkers.push(marker);
-                    toggleUIForMobile(false, true);
-                } else {
-                    // 桌面版維持原邏輯
-                    const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
-                    marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
-                    currentMarkers.push(marker);
-                    map.setView([userLocation.lat, userLocation.lon], 15);
-                }
-
-                if(isMobile()) toggleUIForMobile(false, true);
-                hideLoading(); setBusy(false);
-        },
-        (err) => {
+            const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
+            marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
+            currentMarkers.push(marker);
+            map.setView([userLocation.lat, userLocation.lon], 15);
+            if(isMobile()) toggleUIForMobile(false, true); // ✅ 保留半徑欄位
+            hideLoading(); setBusy(false);
+        }, 
+        (err)=>{
             alert("無法取得定位，請確認瀏覽器允許定位權限，或重新整理頁面再嘗試");
             hideLoading(); setBusy(false);
         }
-    );
+      );
   });
 }
 
@@ -154,21 +140,6 @@ function isMobile(){ return /android/i.test(ua) || /iPad|iPhone|iPod/.test(ua); 
 function isIOS(){ return /iPad|iPhone|iPod/.test(ua); }
 function isAndroid(){ return /android/i.test(ua); }
 
-function initOverlayMap(lat=25.033964, lon=121.564468, zoom=15) {
-    if (!overlayMap) {
-        overlayMap = L.map(overlayMapEl, { zoomControl:true }).setView([lat, lon], zoom);
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:19, attribution:'&copy; OpenStreetMap contributors' }).addTo(overlayMap);
-    } else {
-        overlayMap.setView([lat, lon], zoom);
-    }
-    clearOverlayMarkers();
-}
-
-function clearOverlayMarkers() {
-    overlayMarkers.forEach(m=>overlayMap.removeLayer(m));
-    overlayMarkers = [];
-}
-
 // ----- Theme -----
 const themeToggleBtn = document.getElementById("themeToggle");
 function updateThemeButtonText(){ themeToggleBtn.textContent = document.body.classList.contains("dark-mode")?"切換光亮模式":"切換黑暗模式"; }
@@ -216,24 +187,6 @@ districtSelect.addEventListener("change", () => {
 
 // 半徑改變（手機版定位後才顯示半徑）
 radiusInput.addEventListener("input", updateSearchInfo);
-
-// 建立懸浮地圖 overlay
-const mapOverlay = document.createElement("div");
-mapOverlay.className = "map-overlay";
-mapOverlay.innerHTML = `<div class="map-container" id="mapOverlayMap"></div><button class="close-btn">關閉</button>`;
-document.body.appendChild(mapOverlay);
-if (!isMobile()) {
-    mapOverlay.style.display = "none"; // 桌面版直接隱藏 overlay
-}
-
-const overlayMapEl = document.getElementById("mapOverlayMap");
-const closeOverlayBtn = mapOverlay.querySelector(".close-btn");
-
-// 關閉懸浮
-closeOverlayBtn.addEventListener("click", () => {
-  mapOverlay.classList.remove("show");
-  clearOverlayMarkers();
-});
 
 // ----- Restaurant Types -----
 const typeOptions=[
@@ -412,15 +365,9 @@ function createActionButtons(lat, lon, name, r) {
     btnView.textContent = "📍 顯示在地圖";
     btnView.classList.add("action-btn", "map-btn");
     btnView.addEventListener("click", () => {
-    if (isMobile()) {
-    mapOverlay.classList.add("show");
-    initOverlayMap(lat, lon, 17);
-    const marker = L.marker([lat, lon]).addTo(overlayMap).bindTooltip(name, { permanent:false, direction:'top' });
-    overlayMarkers.push(marker);
-    } else {
         map.setView([lat, lon], 17);
-        mapEl.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+        const mapEl = document.getElementById("map");
+        if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     // --- 在 Google Maps 開啟 ---
@@ -622,20 +569,13 @@ function renderRestaurants(restaurants) {
         if (isMobile()) {
             card.style.maxHeight = "220px";
             card.style.overflow = "hidden";
-            //cardLeft.style.overflowY = "auto";
+            cardLeft.style.overflowY = "auto";
         }
 
         resultsPanel.appendChild(card);
     });
 
     if (currentMarkers.length > 0) map.fitBounds(bounds.pad(0.3));
-}
-
-function hideMobileMapAfterSearch() {
-    if (isMobile()) {
-        const mapEl = document.getElementById("map");
-        if (mapEl) mapEl.style.display = "none";
-    }
 }
 
 // ----- Main Search -----
@@ -718,7 +658,6 @@ async function doSearch() {
         hideLoading();
         setBusy(false);
     }
-    if (isMobile()) hideMobileMapAfterSearch();
 }
 
 searchBtn.addEventListener("click",doSearch);

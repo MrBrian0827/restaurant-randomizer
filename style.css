@@ -28,7 +28,9 @@ body.dark-mode {
 }
 
 /* Utility */
-.hidden { display: none !important; }
+.hidden {
+  display: none !important;
+}
 
 /* ===========================
    Base & Fix for White Lines
@@ -136,35 +138,74 @@ button:disabled {
   transition: background-color 0.2s ease, transform 0.1s ease;
 }
 
-.map-btn { background: linear-gradient(135deg, #f59e0b, #fbbf24); }
-.google-btn { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
-.nav-btn { background: linear-gradient(135deg, #10b981, #34d399); }
+.map-btn {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+}
 
-.action-btn:hover { filter: brightness(1.1); }
-.action-btn:active { transform: scale(0.97); }
+.google-btn {
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+}
+
+.nav-btn {
+  background: linear-gradient(135deg, #10b981, #34d399);
+}
+
+.action-btn:hover {
+  filter: brightness(1.1);
+}
+
+.action-btn:active {
+  transform: scale(0.97);
+}
+
 .action-btn:disabled { opacity:0.6; cursor:not-allowed; }
 
 /* Button Types */
-.btn-primary { background: linear-gradient(135deg, #e4572e, #ff7a4a); font-weight:700; }
-.btn-secondary { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
-.btn-utility { background: linear-gradient(135deg, #10b981, #34d399); }
+.btn-primary {
+  background: linear-gradient(135deg, #e4572e, #ff7a4a);
+  font-weight:700;
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+}
+
+.btn-utility {
+  background: linear-gradient(135deg, #10b981, #34d399);
+}
 
 .btn-toggle {
   background: #e5e7eb;
   color: #374151;
   transition: background-color 0.2s ease;
 }
-body.dark-mode .btn-toggle { background: #374151; color: #e5e7eb; }
-.btn-toggle:hover { background: #d1d5db; }
-body.dark-mode .btn-toggle:hover { background: #4b5563; }
+
+body.dark-mode .btn-toggle {
+  background: #374151;
+  color: #e5e7eb;
+}
+
+.btn-toggle:hover {
+  background: #d1d5db;
+}
+
+body.dark-mode .btn-toggle:hover {
+  background: #4b5563;
+}
 
 /* Emoji Hover Animation */
 button span.emoji {
   display:inline-block;
   transition: transform 0.2s ease;
 }
-button:hover span.emoji { transform: translateY(-3px); }
-button:active span.emoji { transform: translateY(0); }
+
+button:hover span.emoji {
+  transform: translateY(-3px);
+}
+
+button:active span.emoji {
+  transform: translateY(0);
+}
 
 /* ===========================
    Layout Grid & Map
@@ -197,44 +238,56 @@ button:active span.emoji { transform: translateY(0); }
   overflow:auto;
 }
 
-/* ===========================
-   Card
-=========================== */
+/* Card */
 .card {
   background: var(--card-bg);
   border-radius:8px;
   padding:10px;
   border:1px solid var(--border-color);
   display:flex;
-  flex-direction: row;       /* 水平排列 */
-  flex-wrap: wrap;           /* 超過寬度自動換行 */
-  justify-content: space-between;
-  align-items: flex-start;
+  justify-content:space-between;
+  align-items:flex-start;
   gap:12px;
-  overflow: visible;         /* 保證按鈕不被切掉 */
+  flex-wrap:wrap;
 }
+.card-left { display:flex; flex-direction:column; flex:1; min-width:200px; }
+.card-title { font-weight:700; margin:0; color: var(--text-color); }
+.card-sub { font-size:13px; color: var(--muted); margin-top:4px; }
+.card-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.card-actions button { padding:8px 10px; font-size:14px; flex-shrink:0; }
 
+/* ===== 調整店家資訊顯示 ===== */
 .card-left {
-  flex: 1 1 200px;           /* 彈性增長，最小200px */
-  min-width: 150px;          /* 手機小螢幕時縮小 */
-  display:flex;
+  display: flex;
   flex-direction: column;
-  line-height:1.4;
-  gap:2px;
+  flex: 1;
+  min-width: 200px;
+  line-height: 1.4;       /* 行距適中 */
+  gap: 2px;               /* 每行間距 */
 }
 
-.card-title { font-weight:700; margin:0 0 2px 0; font-size:16px; color: var(--text-color); }
-.card-sub { font-size:14px; margin:0; color: var(--muted); word-break: break-word; }
-
-.card-actions {
-  display:flex;
-  flex-wrap: wrap;            /* 按鈕自動換行 */
-  gap:6px;
-  flex:0 1 auto;              /* 不強制固定寬度 */
+.card-title {
+  font-weight: 700;
+  margin: 0 0 2px 0;
+  font-size: 16px;
+  color: var(--text-color);
 }
 
-body.dark-mode .card-title { color: var(--text-color); }
-body.dark-mode .card-sub { color: var(--muted); }
+.card-sub {
+  font-size: 14px;
+  margin: 0;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+/* 暗黑模式自動套用 */
+body.dark-mode .card-title {
+  color: var(--text-color);
+}
+
+body.dark-mode .card-sub {
+  color: var(--muted);
+}
 
 /* Loading */
 .loading-overlay {
@@ -250,10 +303,26 @@ body.dark-mode .card-sub { color: var(--muted); }
   pointer-events: none;
   transition: opacity 0.3s ease;
 }
+
 body.dark-mode .loading-overlay { background: rgba(0,0,0,0.6); }
-.loading-overlay.show { opacity:1; pointer-events: all; }
-@keyframes spin { to{ transform:rotate(360deg); } }
-.spinner { width:40px; height:40px; border:4px solid #ccc; border-top-color: var(--accent); border-radius:50%; animation: spin 1s linear infinite; }
+
+.loading-overlay.show {
+  opacity: 1;
+  pointer-events: all;
+}
+
+@keyframes spin { 
+  to{ transform:rotate(360deg); } 
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #ccc;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
 
 /* Suggestion Box */
 .suggestion-box { position:relative; }
@@ -272,73 +341,24 @@ body.dark-mode .loading-overlay { background: rgba(0,0,0,0.6); }
 body.dark-mode .suggestion-item:hover { background: #333; }
 
 /* Reset Search Button (Mobile) */
-.reset-search-btn { display:none; }
+.reset-search-btn {
+  display: none; /* 預設不顯示，JS 會控制 */
+}
 
-/* -------------------- 手機版懸浮地圖 -------------------- */
-@media (max-width: 900px) {
-  /* 手機版隱藏主地圖（查詢餐廳後） */
-  #map {
+/* Mobile */
+@media(max-width:900px){
+  .main-grid{ grid-template-columns:1fr; }
+  .map{ height:420px; }
+  .results-panel{ order:0; }
+  #map{ order:1; }
+  .actions-col{ justify-content:flex-start; }
+  .card{ flex-direction:column; align-items:flex-start; }
+  .card-actions{ width:100%; justify-content:flex-start; }
+  /* 手機搜尋後隱藏搜尋條件 */
+  .controls.mobile-hidden {
     display: none;
-    height: 420px; /* 可依需求調整 */
-    width: 100%;
   }
-
-  /* 懸浮地圖 */
-  .map-overlay {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 99999;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s ease;
-  }
-  .map-overlay.show {
-    opacity: 1;
-    pointer-events: all;
-  }
-  .map-overlay .map-container {
-    width: 90%;
-    max-width: 400px;
-    height: 60%;
-    border-radius: 12px;
-    overflow: hidden;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-    background: var(--card-bg);
-  }
-  .map-overlay .close-btn {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    background: #ff5a5f;
-    color: #fff;
-    border: 0;
-    padding: 6px 12px;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    z-index: 100000;
-  }
-
-  /* 店家資訊卡片按鈕直排 */
-  .card-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-  }
-
-  .card-actions button,
-  .card-actions a {
-    width: 100%;
-    box-sizing: border-box;
-    text-align: center;
-  }
-
-  /* 手機版重新搜尋按鈕 */
+    /* 手機版顯示「重新搜尋條件」按鈕 */
   .reset-search-btn {
     display: block;
     width: 100%;
@@ -353,17 +373,61 @@ body.dark-mode .suggestion-item:hover { background: #333; }
   }
 }
 
-/* Help Modal */
-.help-modal { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:99999; }
+/* ===== 說明彈窗 ===== */
+.help-modal {
+  position: fixed;
+  top:0; left:0; right:0; bottom:0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 99999;
+}
+
 .help-content {
   background: var(--card-bg);
   color: var(--text-color);
-  padding:20px;
-  border-radius:12px;
-  width:90%;
-  max-width:400px;
-  box-shadow:0 8px 24px rgba(0,0,0,0.2);
+  padding: 20px;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
 }
-.help-content h2{ margin-top:0; }
-.help-content p{ margin:6px 0; }
-.help-content button{ margin-top:12px; width:100%; justify-content:center; }
+
+.help-content h2 {
+  margin-top: 0;
+}
+
+.help-content p {
+  margin: 6px 0;
+}
+
+.help-content button {
+  margin-top: 12px;
+  width: 100%;
+  justify-content: center;
+}
+
+/* 手機版結果卡片優化 */
+@media (max-width: 900px) {
+    .results-panel {
+        overflow-y: auto;
+        max-height: 50vh; /* 手機可上下滑動 */
+        padding: 8px;
+    }
+
+    .card {
+        display: flex;
+        flex-direction: column;
+        max-height: 220px; /* 單個卡片最大高度 */
+        margin-bottom: 12px;
+        border-radius: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        overflow: hidden;
+    }
+
+    .card-left {
+        overflow-y: auto; /* 內部可滾動 */
+        padding-right: 8px;
+    }
+}
