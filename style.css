@@ -274,23 +274,71 @@ body.dark-mode .suggestion-item:hover { background: #333; }
 /* Reset Search Button (Mobile) */
 .reset-search-btn { display:none; }
 
-/* Mobile */
-@media(max-width:900px){
-  .main-grid{ grid-template-columns:1fr; }
-  .map{ height:420px; }
-  .results-panel{ order:0; }
-  #map{ order:1; }
-  .actions-col{ justify-content:flex-start; }
+/* -------------------- 手機版懸浮地圖 -------------------- */
+@media (max-width: 900px) {
+  /* 手機版隱藏主地圖（查詢餐廳後） */
+  #map {
+    display: none;
+    height: 420px; /* 可依需求調整 */
+    width: 100%;
+  }
 
-  /* 卡片與按鈕自適應 */
-  .card{ flex-direction: column; align-items:flex-start; }
-  .card-actions{ flex-direction: column; width:100%; gap:8px; }
-  .card-actions button, .card-actions a{ width:100%; max-width:100%; text-align:center; }
+  /* 懸浮地圖 */
+  .map-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 99999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .map-overlay.show {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .map-overlay .map-container {
+    width: 90%;
+    max-width: 400px;
+    height: 60%;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    background: var(--card-bg);
+  }
+  .map-overlay .close-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: #ff5a5f;
+    color: #fff;
+    border: 0;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 100000;
+  }
 
-  /* 手機搜尋後隱藏搜尋條件 */
-  .controls.mobile-hidden { display: none; }
+  /* 店家資訊卡片按鈕直排 */
+  .card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
 
-  /* 手機版「重新搜尋條件」按鈕 */
+  .card-actions button,
+  .card-actions a {
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  /* 手機版重新搜尋按鈕 */
   .reset-search-btn {
     display: block;
     width: 100%;
