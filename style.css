@@ -1,5 +1,5 @@
 /* ===========================
-   Global Variables
+   Global Variables (default)
 =========================== */
 :root {
   --accent: #e4572e;
@@ -12,7 +12,9 @@
   --input-color: #111111;
 }
 
-/* Dark Mode */
+/* ===========================
+   Dark Mode Variables
+=========================== */
 html.dark-mode,
 body.dark-mode {
   --bg: #121212;
@@ -27,6 +29,10 @@ body.dark-mode {
 
 /* Utility */
 .hidden { display: none !important; }
+
+/* ===========================
+   Base & Fix for White Lines
+=========================== */
 * { box-sizing: border-box; }
 
 html, body {
@@ -143,13 +149,20 @@ button:disabled {
 .btn-secondary { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
 .btn-utility { background: linear-gradient(135deg, #10b981, #34d399); }
 
-.btn-toggle { background: #e5e7eb; color: #374151; transition: background-color 0.2s ease; }
+.btn-toggle {
+  background: #e5e7eb;
+  color: #374151;
+  transition: background-color 0.2s ease;
+}
 body.dark-mode .btn-toggle { background: #374151; color: #e5e7eb; }
 .btn-toggle:hover { background: #d1d5db; }
 body.dark-mode .btn-toggle:hover { background: #4b5563; }
 
-/* Emoji hover */
-button span.emoji { display:inline-block; transition: transform 0.2s ease; }
+/* Emoji Hover Animation */
+button span.emoji {
+  display:inline-block;
+  transition: transform 0.2s ease;
+}
 button:hover span.emoji { transform: translateY(-3px); }
 button:active span.emoji { transform: translateY(0); }
 
@@ -158,7 +171,12 @@ button:active span.emoji { transform: translateY(0); }
 =========================== */
 .actions-col { display:flex; align-items:flex-end; justify-content:flex-end; }
 
-.main-grid { display:grid; grid-template-columns:1fr 380px; gap:12px; }
+.main-grid {
+  display:grid;
+  grid-template-columns:1fr 380px;
+  gap:12px;
+}
+
 .map {
   height:600px;
   border-radius:10px;
@@ -180,7 +198,7 @@ button:active span.emoji { transform: translateY(0); }
 }
 
 /* ===========================
-   Cards / 店家資訊
+   Card
 =========================== */
 .card {
   background: var(--card-bg);
@@ -188,41 +206,37 @@ button:active span.emoji { transform: translateY(0); }
   padding:10px;
   border:1px solid var(--border-color);
   display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
+  flex-direction: row;       /* 水平排列 */
+  flex-wrap: wrap;           /* 超過寬度自動換行 */
+  justify-content: space-between;
+  align-items: flex-start;
   gap:12px;
-  flex-wrap:wrap;
-  overflow:visible; /* 防止手機按鈕被截掉 */
+  overflow: visible;         /* 保證按鈕不被切掉 */
 }
 
-.card-left { 
-  display:flex; 
-  flex-direction:column; 
-  flex:1; 
-  min-width:200px; 
-  line-height:1.4; 
-  gap:2px; 
+.card-left {
+  flex: 1 1 200px;           /* 彈性增長，最小200px */
+  min-width: 150px;          /* 手機小螢幕時縮小 */
+  display:flex;
+  flex-direction: column;
+  line-height:1.4;
+  gap:2px;
 }
 
 .card-title { font-weight:700; margin:0 0 2px 0; font-size:16px; color: var(--text-color); }
 .card-sub { font-size:14px; margin:0; color: var(--muted); word-break: break-word; }
 
-.card-actions { 
-  display:flex; 
-  gap:6px; 
-  flex-wrap:wrap; 
+.card-actions {
+  display:flex;
+  flex-wrap: wrap;            /* 按鈕自動換行 */
+  gap:6px;
+  flex:0 1 auto;              /* 不強制固定寬度 */
 }
 
-.card-actions button,
-.card-actions a { 
-  flex-shrink:0; 
-  font-size:14px; 
-  padding:8px 10px;
-}
+body.dark-mode .card-title { color: var(--text-color); }
+body.dark-mode .card-sub { color: var(--muted); }
 
-/* ===========================
-   Loading
-=========================== */
+/* Loading */
 .loading-overlay {
   position: fixed;
   left:0; top:0; right:0; bottom:0;
@@ -237,14 +251,11 @@ button:active span.emoji { transform: translateY(0); }
   transition: opacity 0.3s ease;
 }
 body.dark-mode .loading-overlay { background: rgba(0,0,0,0.6); }
-.loading-overlay.show { opacity:1; pointer-events:all; }
-
+.loading-overlay.show { opacity:1; pointer-events: all; }
 @keyframes spin { to{ transform:rotate(360deg); } }
 .spinner { width:40px; height:40px; border:4px solid #ccc; border-top-color: var(--accent); border-radius:50%; animation: spin 1s linear infinite; }
 
-/* ===========================
-   Suggestion Box
-=========================== */
+/* Suggestion Box */
 .suggestion-box { position:relative; }
 .suggestions {
   position:absolute;
@@ -260,52 +271,42 @@ body.dark-mode .loading-overlay { background: rgba(0,0,0,0.6); }
 .suggestion-item:hover { background:#e0f7fa; }
 body.dark-mode .suggestion-item:hover { background: #333; }
 
-/* ===========================
-   Reset Search (Mobile)
-=========================== */
+/* Reset Search Button (Mobile) */
 .reset-search-btn { display:none; }
+
+/* Mobile */
 @media(max-width:900px){
   .main-grid{ grid-template-columns:1fr; }
   .map{ height:420px; }
   .results-panel{ order:0; }
   #map{ order:1; }
   .actions-col{ justify-content:flex-start; }
-  .card{ flex-direction:column; align-items:flex-start; overflow:visible; }
-  .card-actions{
-    flex-direction:column; 
-    gap:8px; 
-    width:100%; 
-    margin-top:8px;
-  }
-  .card-actions button,
-  .card-actions a { width:100%; max-width:100%; box-sizing:border-box; text-align:center; }
 
+  /* 卡片與按鈕自適應 */
+  .card{ flex-direction: column; align-items:flex-start; }
+  .card-actions{ flex-direction: column; width:100%; gap:8px; }
+  .card-actions button, .card-actions a{ width:100%; max-width:100%; text-align:center; }
+
+  /* 手機搜尋後隱藏搜尋條件 */
+  .controls.mobile-hidden { display: none; }
+
+  /* 手機版「重新搜尋條件」按鈕 */
   .reset-search-btn {
-    display:block;
-    width:100%;
-    margin:8px 0;
-    padding:14px;
-    border-radius:10px;
-    border:0;
-    font-size:16px;
-    font-weight:700;
+    display: block;
+    width: 100%;
+    margin: 8px 0;
+    padding: 14px;
+    border-radius: 10px;
+    border: 0;
+    font-size: 16px;
+    font-weight: 700;
     background: linear-gradient(135deg, #64748b, #94a3b8);
-    color:#fff;
+    color: #fff;
   }
 }
 
-/* ===========================
-   Help Modal
-=========================== */
-.help-modal {
-  position:fixed;
-  top:0; left:0; right:0; bottom:0;
-  background: rgba(0,0,0,0.5);
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  z-index:99999;
-}
+/* Help Modal */
+.help-modal { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:99999; }
 .help-content {
   background: var(--card-bg);
   color: var(--text-color);
