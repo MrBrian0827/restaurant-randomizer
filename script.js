@@ -362,7 +362,7 @@ function createActionButtons(lat, lon, name, r) {
 
     // --- 顯示在地圖 ---
     const btnView = document.createElement("button");
-    btnView.textContent = "📍 顯示在地圖";
+    btnView.textContent = "📍 顯示位置";
     btnView.classList.add("action-btn", "map-btn");
     btnView.addEventListener("click", () => {
         map.setView([lat, lon], 17);
@@ -372,7 +372,7 @@ function createActionButtons(lat, lon, name, r) {
 
     // --- 在 Google Maps 開啟 ---
     const btnMaps = document.createElement("button");
-    btnMaps.textContent = "🗺️ 在 Google Maps 開啟";
+    btnMaps.textContent = "🗺️ GoogleMap";
     btnMaps.classList.add("action-btn", "google-btn");
     btnMaps.addEventListener("click", () => {
         let query;
@@ -475,10 +475,27 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
     if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
 }
 
+window.addEventListener('resize', () => {
+    if (isMobile()) {
+        toggleUIForMobile(!lastRestaurants.length, hasUsedLocate); // 根據目前狀態調整
+    } else {
+        // PC 版顯示完整 UI
+        toggleUIForMobile(true, false);
+    }
+});
+
 // ----- Render Restaurants (整合版) -----
 function renderRestaurants(restaurants) {
     clearMarkers();
     resultsPanel.innerHTML = "";
+
+    // 保留使用者位置大頭針
+    if(userLocation){
+        const userMarker = L.marker([userLocation.lat, userLocation.lon])
+            .addTo(map)
+            .bindTooltip("👤 您的位置", {permanent:true, direction:'top'});
+        currentMarkers.push(userMarker);
+    }
 
     if (!restaurants || restaurants.length === 0) {
         resultsPanel.textContent = "找不到符合的店家";
@@ -565,11 +582,11 @@ function renderRestaurants(restaurants) {
         const cardActions = createActionButtons(lat, lon, name, r);
         card.appendChild(cardActions);
 
-        // 手機版限制高度，內部可滾動
+        // 手機版可上下滑動整個結果區塊，卡片自適應高度
         if (isMobile()) {
-            card.style.maxHeight = "220px";
-            card.style.overflow = "hidden";
-            cardLeft.style.overflowY = "auto";
+            card.style.maxHeight = "none";   // 不限制單張卡片高度
+            card.style.overflow = "visible";
+            cardLeft.style.overflowY = "visible";
         }
 
         resultsPanel.appendChild(card);
@@ -657,6 +674,11 @@ async function doSearch() {
     } finally {
         hideLoading();
         setBusy(false);
+    }
+    // ----- 手機版搜尋後隱藏按鈕 -----
+    if (isMobile()) {
+        if (locateBtn) locateBtn.style.display = "none";
+        if (searchBtn) searchBtn.style.display = "none";
     }
 }
 
