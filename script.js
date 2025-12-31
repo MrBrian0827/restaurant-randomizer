@@ -569,7 +569,7 @@ function renderRestaurants(restaurants) {
         if (isMobile()) {
             card.style.maxHeight = "220px";
             card.style.overflow = "hidden";
-            cardLeft.style.overflowY = "auto";
+            //cardLeft.style.overflowY = "auto";
         }
 
         resultsPanel.appendChild(card);
