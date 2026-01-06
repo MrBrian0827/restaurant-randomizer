@@ -68,11 +68,19 @@ if (locateBtn) {
       navigator.geolocation.getCurrentPosition(
         async(pos)=>{
             userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
+            // 顯示目前地址
+            const addrEl = document.getElementById("currentAddress");
+            const addrData = await geocode(`${userLocation.lat},${userLocation.lon}`);
+            if (addrEl && addrData?.raw?.display_name) {
+                addrEl.textContent = "📍 目前位置：" + addrData.raw.display_name;
+                addrEl.style.display = "";
+            }
             clearMarkers();
             const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
             marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
             currentMarkers.push(marker);
             map.setView([userLocation.lat, userLocation.lon], 15);
+            locateBtn.style.display = "none";
             if(isMobile()) toggleUIForMobile(false, true); // ✅ 保留半徑欄位
             hideLoading(); setBusy(false);
         }, 
@@ -87,20 +95,30 @@ if (locateBtn) {
 // 「重新搜尋條件」按鈕
 if (resetBtn) {
     resetBtn.addEventListener("click", () => {
-        // 展開完整 UI
+
+        // 1️⃣ 展開完整 UI（不保留半徑）
         toggleUIForMobile(true, false);
-        // 清除使用者位置
+
+        // 2️⃣ 重置定位狀態
         userLocation = null;
-        hasUsedLocate = false; // ⭐ 重置定位狀態
-        // 清空輸入與結果
+        hasUsedLocate = false;
+        lastRestaurants = [];
+
+        // 3️⃣ 清空輸入與結果
         streetInput.value = "";
         streetSuggestions.innerHTML = "";
         resultsPanel.innerHTML = "";
-        // 回到預設地圖
+
+        // 4️⃣ 搜尋 / 定位按鈕恢復
+        searchBtn.style.display = "";
+        locateBtn.style.display = "";
+        reshuffleBtn.disabled = true;
+
+        // 5️⃣ 回到預設地圖
         map.setView([25.033964, 121.564468], 13);
-        // 移除地圖上的大頭針
         clearMarkers();
     });
+    updateRadiusVisibility();
 }
 
 if(!isMobile() && locateBtn){
@@ -139,6 +157,17 @@ function distance(lat1,lon1,lat2,lon2){const R=6371000; const toRad=Math.PI/180;
 function isMobile(){ return /android/i.test(ua) || /iPad|iPhone|iPod/.test(ua); }
 function isIOS(){ return /iPad|iPhone|iPod/.test(ua); }
 function isAndroid(){ return /android/i.test(ua); }
+function updateRadiusVisibility() {
+    const showRadius = !!streetInput.value || hasUsedLocate;
+    const label = document.querySelector('label[for="radiusInput"]');
+
+    radiusInput.style.display = showRadius ? "" : "none";
+    radiusLabel.style.display = showRadius ? "" : "none";
+    if (label) label.style.display = showRadius ? "" : "none";
+}
+streetInput.addEventListener("input", updateRadiusVisibility);
+districtSelect.addEventListener("change", updateRadiusVisibility);
+
 
 // ----- Theme -----
 const themeToggleBtn = document.getElementById("themeToggle");
@@ -450,13 +479,12 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
         districtSelect,
         streetInput,
         streetSuggestions,
-        typeSelect,
         document.querySelector('label[for="countrySelect"]'),
         document.querySelector('label[for="citySelect"]'),
         document.querySelector('label[for="districtSelect"]'),
-        document.querySelector('label[for="streetInput"]'),
-        document.querySelector('label[for="typeSelect"]')
+        document.querySelector('label[for="streetInput"]')
     ];
+
     // 一般欄位
     normalControls.forEach(el => {
         if (el) el.style.display = showFull ? "" : "none";
@@ -657,7 +685,7 @@ async function doSearch() {
         renderRestaurants(randomResults);
 
         // ----- 手機 UI 折疊 -----
-        if (isMobile()) toggleUIForMobile(false, hasUsedLocate); // 半徑顯示依 hasUsedLocate
+        if (isMobile()) toggleUIForMobile(false, false);
 
         // ----- 顯示重新搜尋條件按鈕 -----
         if (resetBtn) resetBtn.style.display = "";
