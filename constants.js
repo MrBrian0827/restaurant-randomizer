@@ -83,10 +83,39 @@ window.japanData = {
 };
 
 window.mapping = {
-  "restaurant":[
-    `node["amenity"="restaurant"]`, `way["amenity"="restaurant"]`, `relation["amenity"="restaurant"]`,
-    `node["cuisine"]`, `way["cuisine"]`, `relation["cuisine"]`
+    "restaurant":[
+    // 正統餐廳
+    `node["amenity"="restaurant"]`,
+    `way["amenity"="restaurant"]`,
+    `relation["amenity"="restaurant"]`,
+
+    // 常見「實際是餐廳」但被標成其他 amenity
+    `node["amenity"="fast_food"]`,
+    `way["amenity"="fast_food"]`,
+    `relation["amenity"="fast_food"]`,
+
+    `node["amenity"="cafe"]`,
+    `way["amenity"="cafe"]`,
+    `relation["amenity"="cafe"]`,
+
+    `node["amenity"="food_court"]`,
+    `way["amenity"="food_court"]`,
+    `relation["amenity"="food_court"]`,
+
+    `node["amenity"="bar"]`,
+    `way["amenity"="bar"]`,
+    `relation["amenity"="bar"]`,
+
+    // 烘焙 / 外帶（實務上大量正餐）
+    `node["shop"="bakery"]`,
+    `way["shop"="bakery"]`,
+    `relation["shop"="bakery"]`,
+
+    `node["amenity"="takeaway"]`,
+    `way["amenity"="takeaway"]`,
+    `relation["amenity"="takeaway"]`
   ],
+
   "fast_food":[
     `node["amenity"="fast_food"]`, `way["amenity"="fast_food"]`, `relation["amenity"="fast_food"]`,
     `node["shop"="fast_food"]`, `way["shop"="fast_food"]`, `relation["shop"="fast_food"]`,
