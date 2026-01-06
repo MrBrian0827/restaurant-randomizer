@@ -168,7 +168,25 @@ countrySelect.addEventListener("change",()=>{
   const titleEl=document.querySelector(".header h1"); if(titleEl) titleEl.textContent=currentCountry==="tw"?"台灣餐廳隨機推薦器":"日本餐廳隨機推薦器";
   streetInput.value=""; streetSuggestions.innerHTML=""; resultsPanel.innerHTML=""; map.setView([25.033964,121.564468],13);
 });
-citySelect.addEventListener("change",()=>{ const dataSource=countrySelect.value==="jp"?window.japanData:window.taiwanData; populateDistricts(dataSource, citySelect.value); });
+citySelect.addEventListener("change",()=>{ const dataSource=countrySelect.value==="jp"?window.japanData:window.taiwanData; populateDistricts(dataSource, citySelect.value); updateSearchInfo(); });
+
+districtSelect.addEventListener("change", () => {
+    // 清空街道 / 門牌欄位
+    streetInput.value = "";
+    streetSuggestions.innerHTML = "";
+
+    // 隱藏半徑欄位（只有填街道時才顯示）
+    radiusInput.style.display = "none";
+    radiusLabel.style.display = "none";
+    const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+    if(radiusLabelEl) radiusLabelEl.style.display = "none";
+
+    // 更新目前搜尋訊息
+    updateSearchInfo();
+});
+
+// 半徑改變（手機版定位後才顯示半徑）
+radiusInput.addEventListener("input", updateSearchInfo);
 
 // ----- Restaurant Types -----
 const typeOptions=[
@@ -342,9 +360,9 @@ function createActionButtons(lat, lon, name, r) {
     const hasReliableAddress = isReliableAddress(rawAddress);
     const fullAddress = hasReliableAddress ? rawAddress : "";
 
-    // --- 顯示在地圖 ---
+    // --- 顯示位置 ---
     const btnView = document.createElement("button");
-    btnView.textContent = "📍 顯示在地圖";
+    btnView.textContent = "📍 顯示位置";
     btnView.classList.add("action-btn", "map-btn");
     btnView.addEventListener("click", () => {
         map.setView([lat, lon], 17);
@@ -354,7 +372,7 @@ function createActionButtons(lat, lon, name, r) {
 
     // --- 在 Google Maps 開啟 ---
     const btnMaps = document.createElement("button");
-    btnMaps.textContent = "🗺️ 在 Google Maps 開啟";
+    btnMaps.textContent = "🗺️ GoogleMap";
     btnMaps.classList.add("action-btn", "google-btn");
     btnMaps.addEventListener("click", () => {
         let query;
@@ -457,14 +475,44 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
     if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
 }
 
-// ----- Render Restaurants (整合版) -----
+window.addEventListener('resize', () => {
+    if (isMobile()) {
+        toggleUIForMobile(!lastRestaurants.length, hasUsedLocate); // 根據目前狀態調整
+    } else {
+        // PC 版顯示完整 UI
+        toggleUIForMobile(true, false);
+    }
+});
+
+// ----- Render Restaurants -----
 function renderRestaurants(restaurants) {
     clearMarkers();
     resultsPanel.innerHTML = "";
+
+    // 保留使用者位置大頭針
+    if(userLocation){
+        const userMarker = L.marker([userLocation.lat, userLocation.lon])
+            .addTo(map)
+            .bindTooltip("👤 您的位置", {permanent:true, direction:'top'});
+        currentMarkers.push(userMarker);
+    }
+
     if (!restaurants || restaurants.length === 0) {
         resultsPanel.textContent = "找不到符合的店家";
         return;
     }
+
+    // 手機版最大高度可滾動
+    if (isMobile()) {
+        resultsPanel.style.overflowY = "auto";
+        resultsPanel.style.maxHeight = "50vh";
+        resultsPanel.style.padding = "8px";
+    } else {
+        resultsPanel.style.overflowY = "";
+        resultsPanel.style.maxHeight = "";
+        resultsPanel.style.padding = "";
+    }
+
     const bounds = L.latLngBounds([]);
     const displayRestaurants = shuffleArray(restaurants).slice(0, 3);
 
@@ -474,70 +522,31 @@ function renderRestaurants(restaurants) {
         const lon = r.lon || r.center?.lon;
         if (!lat || !lon) return;
 
-        // --- Name ---
         let name = t.name || r.name || "查無資料";
 
-        // --- Address ---
-        let rawAddress = "";
-        if (t["addr:street"] || t["addr:housenumber"]) {
-            rawAddress = ((t["addr:street"] || "") + " " + (t["addr:housenumber"] || "")).trim();
-            r.addressSource = "OSM"; // 真實來源
-        } else if (t["addr:full"]) {
-            rawAddress = t["addr:full"];
-            r.addressSource = "OSM";
-        } else if (r.geocodeAddress) {
-            rawAddress = r.geocodeAddress;
-            r.addressSource = "經緯度備援";
-        } else {
-            rawAddress = "查無資料";
-            r.addressSource = null;
-        }
-        let address = isReliableAddress(rawAddress) ? rawAddress : "查無資料";
+        // 地址
+        let rawAddress = t["addr:street"] || t["addr:housenumber"]
+            ? `${t["addr:street"] || ""} ${t["addr:housenumber"] || ""}`.trim()
+            : t["addr:full"] || r.geocodeAddress || "查無資料";
 
-        // --- Opening Hours ---
+        const address = isReliableAddress(rawAddress) ? rawAddress : "查無資料";
+
+        // 營業時間
         let hours = t.opening_hours || r.opening_hours || "查無資料";
-        let hoursSource = t.opening_hours ? "OSM" :
-                          (t.note || t.description || t.operator) ? "OSM 備援" : null;
 
-        // --- Popup Content ---
-        const popupContent = document.createElement("div");
-        const titleEl = document.createElement("h3");
-        titleEl.textContent = name;
-        titleEl.className = "card-title";
-        popupContent.appendChild(titleEl);
-
-        const addrEl = document.createElement("p");
-        addrEl.textContent = "店家地址: " + address;
-        addrEl.className = "card-sub";
-        popupContent.appendChild(addrEl);
-
-        const hoursEl = document.createElement("p");
-        hoursEl.textContent = "店家營業時間: " + hours;
-        hoursEl.className = "card-sub";
-        popupContent.appendChild(hoursEl);
-
-        // --- 資料來源備註 ---
-        if (r.addressSource || hoursSource) {
-            const sourceEl = document.createElement("p");
-            sourceEl.className = "card-sub small";
-            let sourceText = [];
-            if (r.addressSource) sourceText.push("地址來源：" + r.addressSource);
-            if (hoursSource) sourceText.push("營業時間來源：" + hoursSource);
-            sourceEl.textContent = sourceText.join("，");
-            popupContent.appendChild(sourceEl);
-        }
-
-        // --- Card & Markers ---
+        // Marker
         const marker = L.marker([lat, lon]).addTo(map);
         marker.bindTooltip(name, { permanent: false, direction: 'top' });
         currentMarkers.push(marker);
         bounds.extend([lat, lon]);
 
+        // 卡片
         const card = document.createElement("div");
         card.className = "card";
 
         const cardLeft = document.createElement("div");
         cardLeft.className = "card-left";
+
         const cardTitle = document.createElement("h3");
         cardTitle.textContent = name;
         cardTitle.className = "card-title";
@@ -553,12 +562,15 @@ function renderRestaurants(restaurants) {
         cardHours.className = "card-sub";
         cardLeft.appendChild(cardHours);
 
-        // 加入資料來源備註
-        if (r.addressSource || hoursSource) {
+        // 資料來源備註
+        const addressSource = isReliableAddress(rawAddress) ? "OSM / 經緯度備援" : null;
+        const hoursSource = t.opening_hours ? "OSM" : (t.note || t.description || t.operator) ? "OSM 備援" : null;
+
+        if (addressSource || hoursSource) {
             const cardSource = document.createElement("p");
             cardSource.className = "card-sub small";
-            let sourceText = [];
-            if (r.addressSource) sourceText.push("地址來源：" + r.addressSource);
+            const sourceText = [];
+            if (addressSource) sourceText.push("地址來源：" + addressSource);
             if (hoursSource) sourceText.push("營業時間來源：" + hoursSource);
             cardSource.textContent = sourceText.join("，");
             cardLeft.appendChild(cardSource);
@@ -566,9 +578,16 @@ function renderRestaurants(restaurants) {
 
         card.appendChild(cardLeft);
 
-        // ✅ 行動按鈕
+        // 行動按鈕
         const cardActions = createActionButtons(lat, lon, name, r);
         card.appendChild(cardActions);
+
+        // 手機版可上下滑動整個結果區塊，卡片自適應高度
+        if (isMobile()) {
+            card.style.maxHeight = "none";   // 不限制單張卡片高度
+            card.style.overflow = "visible";
+            cardLeft.style.overflowY = "visible";
+        }
 
         resultsPanel.appendChild(card);
     });
@@ -578,7 +597,6 @@ function renderRestaurants(restaurants) {
 
 // ----- Main Search -----
 async function doSearch() {
-    // 每次搜尋前清除先前使用者位置（除非是點取得位置）
     const isUsingUserLocation = !!userLocation;
     showLoading();
     setBusy(true);
@@ -587,14 +605,17 @@ async function doSearch() {
         const district = districtSelect.value;
         const street = streetInput.value.trim();
         const type = typeSelect.value;
-        const radius = parseInt(radiusInput.value);
+        const radius = parseInt(radiusInput.value) || 1000;
         let center = null;
+
+        // 先更新搜尋訊息
+        updateSearchInfo();
+
         // 如果 userLocation 有值，就用它作為搜尋中心
         if (isUsingUserLocation) {
             center = { lat: userLocation.lat, lon: userLocation.lon };
         } else {
             const queryArr = [city, district, street].filter(s => s).join(" ");
-            // Geocode 嘗試
             try {
                 center = await geocode(queryArr);
                 if (!center) throw new Error("找不到該地址位置");
@@ -604,8 +625,25 @@ async function doSearch() {
                 return;
             }
         }
+
         lastSearchCenter = center;
-        // 搜尋餐廳
+
+        // ----- 更新目前搜尋訊息 -----
+        let infoText = "";
+        if (street) {
+            infoText = `目前查詢 ${street} 範圍 ${radius} 公尺`;
+        } else if (isUsingUserLocation) {
+            infoText = `目前查詢您附近範圍 ${radius} 公尺`;
+        } else if (district) {
+            infoText = `目前搜尋 ${district} 附近餐廳`;
+        } else if (city) {
+            infoText = `目前搜尋 ${city} 全區餐廳`;
+        } else {
+            infoText = `目前搜尋全區餐廳`;
+        }
+        if (searchInfoEl) searchInfoEl.textContent = infoText;
+
+        // ----- 搜尋餐廳 -----
         lastRestaurants = [];
         try {
             let results = await findRestaurants(center.lat, center.lon, radius, type);
@@ -613,14 +651,18 @@ async function doSearch() {
         } catch (e) {
             console.warn("搜尋餐廳資料處理失敗，但不影響已取得資料:", e);
         }
-        // 隨機抽三筆
+
+        // ----- 隨機抽三筆顯示 -----
         const randomResults = shuffleArray(lastRestaurants).slice(0, 3);
         renderRestaurants(randomResults);
-        // 手機 UI 折疊
-        if (isMobile()) toggleUIForMobile(false, hasUsedLocate); // ⭐ 根據是否按過定位決定半徑顯示
-        // 顯示重新搜尋條件按鈕
+
+        // ----- 手機 UI 折疊 -----
+        if (isMobile()) toggleUIForMobile(false, hasUsedLocate); // 半徑顯示依 hasUsedLocate
+
+        // ----- 顯示重新搜尋條件按鈕 -----
         if (resetBtn) resetBtn.style.display = "";
-        // 若結果為空，才 alert
+
+        // ----- 若結果為空，才 alert -----
         if (!lastRestaurants || lastRestaurants.length === 0) {
             alert("找不到符合的店家，請稍後再試");
         }
@@ -632,6 +674,11 @@ async function doSearch() {
     } finally {
         hideLoading();
         setBusy(false);
+    }
+    // ----- 手機版搜尋後隱藏按鈕 -----
+    if (isMobile()) {
+        if (locateBtn) locateBtn.style.display = "none";
+        if (searchBtn) searchBtn.style.display = "none";
     }
 }
 
@@ -665,17 +712,94 @@ radiusInput.addEventListener("input", () => {
     radiusLabel.textContent = radiusInput.value + "公尺";
 });
 
-// ----- Street Autocomplete -----
-streetInput.addEventListener("input",(e)=>{
-  if(streetInputDebounceTimeout) clearTimeout(streetInputDebounceTimeout);
-  streetInputDebounceTimeout=setTimeout(()=>{
-    const val=e.target.value.trim().toLowerCase(); streetSuggestions.innerHTML=""; if(!val) return;
-    const streets=taiwanData[citySelect.value]||[]; similarStreets=streets.filter(s=>s.toLowerCase().includes(val)).slice(0,5);
-    similarStreets.forEach(st=>{
-      const li=document.createElement("li"); li.textContent=st; li.addEventListener("click",()=>{ streetInput.value=st; streetSuggestions.innerHTML=""; }); streetSuggestions.appendChild(li);
-    });
-  },300);
+/**
+ * 更新目前搜尋訊息
+ * 顯示方式：
+ * - 若街道未填寫，顯示「目前搜尋 XX 區」
+ * - 若街道有填寫，顯示「目前查詢 XX 路/街範圍 YYY 公尺」
+ */
+function updateSearchInfo() {
+    if (!searchInfoEl) return;
+    const city = citySelect.value || "";
+    const district = districtSelect.value || "";
+    const street = streetInput.value.trim();
+    const radius = parseInt(radiusInput.value) || 0;
+    let message = "";
+
+    if (street) {
+        message = `目前查詢 ${street} 範圍 ${radius} 公尺`;
+    } else if (hasUsedLocate) {
+        message = `目前查詢您附近範圍 ${radius} 公尺`;
+    } else if (district) {
+        message = `目前搜尋 ${district} `;
+    } else if (city) {
+        message = `目前搜尋 ${city} 全區餐廳`;
+    } else {
+        message = "";
+    }
+
+    searchInfoEl.textContent = message;
+
+    // 半徑顯示控制
+    if (street || hasUsedLocate) {
+        radiusInput.style.display = "";
+        radiusLabel.style.display = "";
+        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+        if(radiusLabelEl) radiusLabelEl.style.display = "";
+    } else {
+        radiusInput.style.display = "none";
+        radiusLabel.style.display = "none";
+        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+        if(radiusLabelEl) radiusLabelEl.style.display = "none";
+    }
+}
+
+// 綁定街道輸入即時更新
+streetInput.addEventListener("input", () => {
+    updateSearchInfo();
 });
+
+// ----- Street Autocomplete -----
+streetInput.addEventListener("input", (e) => {
+    const val = e.target.value.trim();
+    
+    // 1. 更新搜尋訊息
+    updateSearchInfo();
+
+    // 2. 半徑顯示邏輯
+    if(val.length > 0 || hasUsedLocate){ // 街道輸入或使用定位
+        radiusInput.style.display = "";
+        radiusLabel.style.display = "";
+        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+        if(radiusLabelEl) radiusLabelEl.style.display = "";
+    } else {
+        radiusInput.style.display = "none";
+        radiusLabel.style.display = "none";
+        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+        if(radiusLabelEl) radiusLabelEl.style.display = "none";
+    }
+
+    // 3. 街道 autocomplete
+    streetSuggestions.innerHTML = "";
+    const streets = (taiwanData[citySelect.value] || []);
+    similarStreets = streets.filter(s => s.toLowerCase().includes(val.toLowerCase())).slice(0,5);
+    similarStreets.forEach(st => {
+        const li = document.createElement("li");
+        li.textContent = st;
+        li.addEventListener("click", () => {
+            streetInput.value = st;
+            streetSuggestions.innerHTML = "";
+            // 點選後顯示半徑
+            radiusInput.style.display = "";
+            radiusLabel.style.display = "";
+            const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+            if(radiusLabelEl) radiusLabelEl.style.display = "";
+            updateSearchInfo(); // 更新訊息
+        });
+        streetSuggestions.appendChild(li);
+    });
+});
+
 document.addEventListener("click",(e)=>{ if(!streetInput.contains(e.target)) streetSuggestions.innerHTML=""; });
 
 // ----- Initial Radius -----
@@ -686,6 +810,7 @@ window.addEventListener("beforeunload", () => {
 
 /**
  * 判斷地址是否「可信可用於 Google Maps search」
+ * 適用於台灣與日本
  * @param {string} address
  * @returns {boolean}
  */
@@ -693,14 +818,23 @@ function isReliableAddress(address) {
     if (!address) return false;
     const addr = String(address).trim();
     if (addr === "" || addr === "查無資料") return false;
-    // 排除只有行政區的地址
-    const adminOnlyPattern = /^(.*(縣|市))?\s*(.*(區|鄉|鎮|市))(\s*,?\s*臺灣)?$/;
+
+    // 排除只有行政區的地址（台灣/日本行政區皆考慮）
+    const adminOnlyPattern = /^(.*(縣|市|都|道|府))?\s*(.*(區|鄉|鎮|町|村|市))(\s*,?\s*(臺灣|日本))?$/;
     if (adminOnlyPattern.test(addr)) return false;
-    // 台灣常見地址關鍵字
-    const keywords = ["路","街","巷","弄","號","段","大道","橋","大樓"];
+
+    // 常見地址關鍵字（台灣/日本）
+    const keywords = [
+        // 台灣
+        "路","街","巷","弄","號","段","大道","橋","大樓",
+        // 日本
+        "丁目","番地","号","通り","ビル","町","区","村","市","駅"
+    ];
     if (!keywords.some(k => addr.includes(k))) return false;
-    // 防呆：只要有數字就算，允許中文逗號
-    if (!/\d/.test(addr)) return false;
+
+    // 可以選擇保留數字判斷作為輔助，但不必要
+    // if (!/\d/.test(addr)) return false;
+
     return true;
 }
 
@@ -740,3 +874,9 @@ helpModal.addEventListener('click', (e) => {
 
 // 調整視窗大小時自動切換
 window.addEventListener('resize', updateHelpContent);
+
+// 初始隱藏半徑
+radiusInput.style.display = "none";
+radiusLabel.style.display = "none";
+const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+if(radiusLabelEl) radiusLabelEl.style.display = "none";
