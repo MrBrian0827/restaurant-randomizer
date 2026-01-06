@@ -42,6 +42,7 @@ let currentMarkers = [];
 let lastRestaurants = [];
 let userLocation = null;
 let hasUsedLocate = false; // ⭐ 新增：是否曾點擊「取得我的位置」
+let hasSearched = false; // ⭐ 是否真的執行過「搜尋餐廳」
 let lastSearchCenter = null;
 let allRestaurants = [];
 let networkOnlineCache = null;
@@ -60,6 +61,7 @@ if (locateBtn) {
   locateBtn.addEventListener("click", async () => {
   userLocation = null;  // 強制清空位置，每次都重新嘗試
   hasUsedLocate = true; // ⭐ 使用者明確點過定位
+  updateRadiusVisibility();
       if(!navigator.geolocation){
           alert("此裝置不支援定位");
           return;
@@ -100,8 +102,9 @@ if (resetBtn) {
         toggleUIForMobile(true, false);
 
         // 2️⃣ 重置定位狀態
-        userLocation = null;
         hasUsedLocate = false;
+        userLocation = null;
+
         lastRestaurants = [];
 
         // 3️⃣ 清空輸入與結果
@@ -112,13 +115,41 @@ if (resetBtn) {
         // 4️⃣ 搜尋 / 定位按鈕恢復
         searchBtn.style.display = "";
         locateBtn.style.display = "";
+        reshuffleBtn.style.display = "none"; // ⭐ 一開始不顯示
         reshuffleBtn.disabled = true;
+        hasSearched = false;
 
         // 5️⃣ 回到預設地圖
         map.setView([25.033964, 121.564468], 13);
         clearMarkers();
+
+        // ⭐ 清空定位
+        userLocation = null;
+        hasUsedLocate = false;
+
+        // ⭐ 清空搜尋狀態
+        hasSearched = false;
+        lastRestaurants = [];
+
+        // ⭐ 隱藏「目前位置」顯示文字
+        const addrEl = document.getElementById("currentAddress");
+        if (addrEl) {
+            addrEl.textContent = "";
+            addrEl.style.display = "none";
+        }
+
+        // ⭐ 強制隱藏「重新抽選三家」
+        reshuffleBtn.style.display = "none";
+        reshuffleBtn.disabled = true;
+
+        updateRadiusVisibility();
+
+        // ⭐ reset = 強制回到初始狀態，半徑一律隱藏
+        radiusInput.style.display = "none";
+        radiusLabel.style.display = "none";
+        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
+        if (radiusLabelEl) radiusLabelEl.style.display = "none";
     });
-    updateRadiusVisibility();
 }
 
 if(!isMobile() && locateBtn){
@@ -158,13 +189,15 @@ function isMobile(){ return /android/i.test(ua) || /iPad|iPhone|iPod/.test(ua); 
 function isIOS(){ return /iPad|iPhone|iPod/.test(ua); }
 function isAndroid(){ return /android/i.test(ua); }
 function updateRadiusVisibility() {
-    const showRadius = !!streetInput.value || hasUsedLocate;
-    const label = document.querySelector('label[for="radiusInput"]');
+    const hasStreet = streetInput.value.trim().length > 0;
+    const show = hasStreet || hasUsedLocate;
+    const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
 
-    radiusInput.style.display = showRadius ? "" : "none";
-    radiusLabel.style.display = showRadius ? "" : "none";
-    if (label) label.style.display = showRadius ? "" : "none";
+    radiusInput.style.display = show ? "" : "none";
+    radiusLabel.style.display = show ? "" : "none";
+    if (radiusLabelEl) radiusLabelEl.style.display = show ? "" : "none";
 }
+
 streetInput.addEventListener("input", updateRadiusVisibility);
 districtSelect.addEventListener("change", updateRadiusVisibility);
 
@@ -498,14 +531,23 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
             el.style.display = keepRadius ? "" : "none";
         }
     });
-    // 按鈕區
-    reshuffleBtn.style.display = "";
+
+    // 按鈕區（重新抽選三家只允許在「已搜尋」狀態出現）
+    if (hasSearched) {
+        reshuffleBtn.style.display = "";
+        reshuffleBtn.disabled = false;
+    } else {
+        reshuffleBtn.style.display = "none";
+        reshuffleBtn.disabled = true;
+    }
+
     if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
 }
 
 window.addEventListener('resize', () => {
     if (isMobile()) {
-        toggleUIForMobile(!lastRestaurants.length, hasUsedLocate); // 根據目前狀態調整
+        toggleUIForMobile(!lastRestaurants.length, false);
+        updateRadiusVisibility(); // ⭐ 半徑顯示只交給這個函式
     } else {
         // PC 版顯示完整 UI
         toggleUIForMobile(true, false);
@@ -625,7 +667,7 @@ function renderRestaurants(restaurants) {
 
 // ----- Main Search -----
 async function doSearch() {
-    const isUsingUserLocation = !!userLocation;
+    const isUsingUserLocation = hasUsedLocate === true && userLocation !== null;
     showLoading();
     setBusy(true);
     try {
@@ -684,6 +726,13 @@ async function doSearch() {
         const randomResults = shuffleArray(lastRestaurants).slice(0, 3);
         renderRestaurants(randomResults);
 
+        // ⭐ 標記：已完成一次有效搜尋
+        hasSearched = true;
+
+        // ⭐ 顯示並啟用「重新抽選三家」
+        reshuffleBtn.style.display = "";
+        reshuffleBtn.disabled = false;
+
         // ----- 手機 UI 折疊 -----
         if (isMobile()) toggleUIForMobile(false, false);
 
@@ -711,13 +760,15 @@ async function doSearch() {
 }
 
 searchBtn.addEventListener("click",doSearch);
-reshuffleBtn.addEventListener("click", ()=>{
-    if(lastRestaurants.length > 0){
-        const shuffled = shuffleArray(lastRestaurants);
-        renderRestaurants(shuffled.slice(0,3));
-    }
-    if(isMobile()) toggleUIForMobile(false);
-  });
+reshuffleBtn.addEventListener("click", () => {
+    if (!hasSearched) return;
+    if (lastRestaurants.length === 0) return;
+
+    const shuffled = shuffleArray(lastRestaurants);
+    renderRestaurants(shuffled.slice(0, 3));
+
+    if (isMobile()) toggleUIForMobile(false);
+});
 
   window.addEventListener("beforeunload", () => {
     userLocation = null;
@@ -728,10 +779,23 @@ reshuffleBtn.addEventListener("click", ()=>{
     resetBtn.addEventListener("click", () => {
         toggleUIForMobile(true, false);   // 展開完整 UI
         userLocation = null;       // 清掉上一個搜尋位置
+        hasUsedLocate = false;
         streetInput.value = "";
         streetSuggestions.innerHTML = "";
         resultsPanel.innerHTML = "";
         map.setView([25.033964,121.564468], 13); // 回到預設地圖
+        // ⭐ 清空定位
+        userLocation = null;
+        hasUsedLocate = false;
+
+        // ⭐ 清空搜尋狀態
+        hasSearched = false;
+        lastRestaurants = [];
+
+        // ⭐ 強制隱藏「重新抽選三家」
+        reshuffleBtn.style.display = "none";
+        reshuffleBtn.disabled = true;
+        updateRadiusVisibility();
     });
   }
 
@@ -767,19 +831,6 @@ function updateSearchInfo() {
     }
 
     searchInfoEl.textContent = message;
-
-    // 半徑顯示控制
-    if (street || hasUsedLocate) {
-        radiusInput.style.display = "";
-        radiusLabel.style.display = "";
-        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
-        if(radiusLabelEl) radiusLabelEl.style.display = "";
-    } else {
-        radiusInput.style.display = "none";
-        radiusLabel.style.display = "none";
-        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
-        if(radiusLabelEl) radiusLabelEl.style.display = "none";
-    }
 }
 
 // 綁定街道輸入即時更新
@@ -793,21 +844,9 @@ streetInput.addEventListener("input", (e) => {
     
     // 1. 更新搜尋訊息
     updateSearchInfo();
+    updateRadiusVisibility();
 
-    // 2. 半徑顯示邏輯
-    if(val.length > 0 || hasUsedLocate){ // 街道輸入或使用定位
-        radiusInput.style.display = "";
-        radiusLabel.style.display = "";
-        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
-        if(radiusLabelEl) radiusLabelEl.style.display = "";
-    } else {
-        radiusInput.style.display = "none";
-        radiusLabel.style.display = "none";
-        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
-        if(radiusLabelEl) radiusLabelEl.style.display = "none";
-    }
-
-    // 3. 街道 autocomplete
+    // 2. 街道 autocomplete
     streetSuggestions.innerHTML = "";
     const streets = (taiwanData[citySelect.value] || []);
     similarStreets = streets.filter(s => s.toLowerCase().includes(val.toLowerCase())).slice(0,5);
@@ -817,12 +856,8 @@ streetInput.addEventListener("input", (e) => {
         li.addEventListener("click", () => {
             streetInput.value = st;
             streetSuggestions.innerHTML = "";
-            // 點選後顯示半徑
-            radiusInput.style.display = "";
-            radiusLabel.style.display = "";
-            const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
-            if(radiusLabelEl) radiusLabelEl.style.display = "";
-            updateSearchInfo(); // 更新訊息
+            updateSearchInfo();
+            updateRadiusVisibility();
         });
         streetSuggestions.appendChild(li);
     });
@@ -867,6 +902,11 @@ function isReliableAddress(address) {
 }
 
 if (isMobile()) toggleUIForMobile(true, false);
+
+// ⭐ APP 啟動初始化：尚未搜尋，強制隱藏重新抽選
+hasSearched = false;
+reshuffleBtn.style.display = "none";
+reshuffleBtn.disabled = true;
 
 const helpBtn = document.getElementById('helpBtn'); // 你的說明按鈕
 const helpModal = document.getElementById('helpModal');
