@@ -6,6 +6,8 @@ const mapping = window.mapping;
 const ua = navigator.userAgent || navigator.vendor || window.opera;
 
 const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd"; // <- 換成你的 key
+const PRECISE_SEARCH_ENABLED = true; // 啟用精確搜尋功能
+const GOOGLE_GEOCODING_API_KEY = ""; // 如果有 Google Geocoding API key，請填入
 const LOCATIONIQ_RETRY = 2;
 const NOMINATIM_RETRY = 2;
 const OVERPASS_RETRY = 3;
@@ -79,11 +81,21 @@ if (locateBtn) {
             }
             clearMarkers();
             const marker = L.marker([userLocation.lat, userLocation.lon]).addTo(map);
-            marker.bindTooltip("您目前的位置", {permanent:false, direction:'top'});
+            marker.bindTooltip("👤 您目前的位置", {permanent:false, direction:'top'});
+            // 將使用者位置資訊存到 marker 中
+            marker.isUserLocation = true;
+            marker.userLocationData = { lat: userLocation.lat, lon: userLocation.lon };
             currentMarkers.push(marker);
+
+            // 高亮使用者位置
+            setTimeout(() => highlightUserLocation(), 300);
             map.setView([userLocation.lat, userLocation.lon], 15);
             locateBtn.style.display = "none";
             if(isMobile()) toggleUIForMobile(false, true); // ✅ 保留半徑欄位
+            
+            // 高亮使用者位置
+            setTimeout(() => highlightUserLocation(), 300);
+            
             hideLoading(); setBusy(false);
         }, 
         (err)=>{
@@ -321,6 +333,13 @@ async function findRestaurants(lat,lon,radius=1000,type=''){
       ${t.note || ""}
     `.toLowerCase();
 
+    // 過濾掉非餐飲業態（超商、影印店等）
+    const shopType = t.shop || "";
+    const cuisineType = t.cuisine || "";
+    if (type === "restaurant" && shopType && !["restaurant","fast_food","cafe","bar","bakery","ice_cream","food_court","takeaway","beverages"].includes(shopType)) {
+        return; // 直接跳過
+    }
+
     if (
       t.disused ||
       t.abandoned ||
@@ -343,6 +362,7 @@ async function findRestaurants(lat,lon,radius=1000,type=''){
     const maxDistDistrict=Math.floor(Math.max(addrDistrict.length,targetDistrict.length)*0.3);
     const cityMatch=!addrCity||levenshtein(addrCity,targetCity)<=maxDistCity;
     const districtMatch=!addrDistrict||levenshtein(addrDistrict,targetDistrict)<=maxDistDistrict;
+    
     if(addrDistrict&&addrDistrict===targetDistrict&&districtMatch&&cityMatch) exactMatch.push(e);
     else if(districtMatch&&cityMatch) fuzzyMatch.push(e);
   });
@@ -358,39 +378,376 @@ async function mergeGeocodeInfo(restaurants, centerQuery) {
     } catch (e) {
         console.warn("Geocode merge failed:", e);
     }
-    return restaurants.map(r => {
+    
+    return await Promise.all(restaurants.map(async (r) => {
         const t = r.tags || {};
-        r.name = t.name || r.name || "查無資料";
+        const name = t.name || r.name || "查無資料";
+        r.name = name;
+        
         // ------------------ 地址處理 ------------------
         let fullAddr = "";
+
+        // 優先用完整地址 addr:full
         if (t["addr:full"]) {
             fullAddr = t["addr:full"];
-        } else if (t["addr:street"] || t["addr:housenumber"]) {
-            fullAddr = `${t["addr:street"] || ""} ${t["addr:housenumber"] || ""}`.trim();
-        } else if (t["addr:place"]) {
-            fullAddr = t["addr:place"];
-        } else if (t["addr:suburb"]) {
-            fullAddr = t["addr:suburb"];
-        } else if (t["addr:district"] && t["addr:city"]) {
+        }
+        // 如果有街道 + 門牌，就組合成完整地址
+        else if (t["addr:street"] && t["addr:housenumber"]) {
+            fullAddr = `${t["addr:street"]} ${t["addr:housenumber"]}`.trim();
+        }
+        // 如果只有街道或 place 就先用它
+        else if (t["addr:street"] || t["addr:place"]) {
+            fullAddr = t["addr:street"] || t["addr:place"];
+        }
+        // fallback 用區 + 城市
+        else if (t["addr:district"] && t["addr:city"]) {
             fullAddr = `${t["addr:district"]}, ${t["addr:city"]}`;
         }
-        // geocode 備援
+
+        // 如果以上地址都不可靠，用 geocode API 取得的完整地址
         if (!isReliableAddress(fullAddr) && geocodeData?.raw?.display_name) {
             fullAddr = geocodeData.raw.display_name;
         }
-        // 完全沒有可靠地址時 fallback 成經緯度
+
+        // ------------------ 精確地址搜尋 ------------------
+        // 只有當地址明顯不完整時才進行精確搜尋
+        const needsPreciseSearch = !isReliableAddress(fullAddr) && 
+                                  name !== "查無資料" && 
+                                  PRECISE_SEARCH_ENABLED &&
+                                  (fullAddr.includes('里') || fullAddr.includes('村') || !fullAddr.includes('號'));
+        
+        if (needsPreciseSearch) {
+            try {
+                const preciseAddress = await geocodeByName(name);
+                if (preciseAddress && isReliableAddress(preciseAddress.fullAddress)) {
+                    fullAddr = preciseAddress.fullAddress;
+                    // 如果 OSM 經緯度不精確，使用搜尋到的精確經緯度
+                    if (preciseAddress.lat && preciseAddress.lon) {
+                        r.lat = preciseAddress.lat;
+                        r.lon = preciseAddress.lon;
+                        r.preciseLocation = true;
+                    }
+                    r.addressSource = "店家名稱精確搜尋";
+                }
+            } catch (e) {
+                console.warn(`精確搜尋 ${name} 失敗:`, e);
+            }
+        }
+
+        // 最後仍無可靠地址時，用經緯度 fallback
         if (!isReliableAddress(fullAddr)) {
             fullAddr = `${r.lat || r.center?.lat},${r.lon || r.center?.lon}`;
             r.addressFallback = true;
+            if (!r.addressSource) r.addressSource = "經緯度備援";
         } else {
             r.addressFallback = false;
+            if (!r.addressSource) r.addressSource = "OSM / 經緯度備援";
         }
+
         r.geocodeAddress = fullAddr;
+        
         // ------------------ 營業時間處理 ------------------
-        // 優先使用 OSM 各欄位，最後用 geocode extratags 備援
         r.opening_hours = t.opening_hours || t.note || t.description || t.operator || geocodeData?.raw?.extratags?.opening_hours || "查無資料";
         return r;
-    });
+    }));
+}
+
+// ----- 透過店家名稱搜尋精確地址 -----
+async function geocodeByName(restaurantName) {
+    if (!restaurantName || restaurantName === "查無資料") return null;
+    
+    // 只有當地址明顯不完整時才進行精確搜尋
+    const city = citySelect.value || "";
+    const district = districtSelect.value || "";
+    
+    try {
+        // 使用免費的 API 來源
+        const results = await Promise.allSettled([
+            // 1. Nominatim 精確搜尋
+            searchNominatimPrecise(restaurantName),
+            // 2. LocationIQ 精確搜尋  
+            searchLocationIqPrecise(restaurantName)
+        ]);
+        
+        // 找到最可靠的結果
+        for (const result of results) {
+            if (result.status === 'fulfilled' && result.value) {
+                const candidate = result.value;
+                
+                // 驗證結果的可靠性
+                if (isReliableAddress(candidate.fullAddress) && 
+                    candidate.lat && candidate.lon) {
+                    
+                    // 降低相似度門檻，並優先考慮地址的可靠性
+                    const nameSimilarity = calculateNameSimilarity(restaurantName, candidate.displayName || candidate.name || '');
+                    if (nameSimilarity > 0.5) {
+                        return {
+                            fullAddress: candidate.fullAddress,
+                            lat: candidate.lat,
+                            lon: candidate.lon,
+                            name: candidate.displayName || candidate.name,
+                            source: candidate.source
+                        };
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("店家名稱精確搜尋失敗:", e);
+    }
+    
+    return null;
+}
+
+// ----- Nominatim 精確搜尋 -----
+async function searchNominatimPrecise(searchQuery) {
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(searchQuery)}&limit=5&countrycodes=tw,jp`;
+        const response = await fetchWithTimeout(url, { headers: {"Accept": "application/json"} }, 8000);
+        const data = await response.json();
+        
+        // 尋找最匹配的結果，優先排除行政機關
+        for (const result of data) {
+            if (result.display_name && result.lat && result.lon) {
+                // 排除明顯不是店家的結果
+                const displayName = (result.display_name || "").toLowerCase();
+                const excludeKeywords = ['辦公處', '區公所', '里辦公處', '派出所', '學校', '公園', '市場', '醫院', '郵局'];
+                
+                if (excludeKeywords.some(keyword => displayName.includes(keyword))) {
+                    continue; // 跳過這些結果
+                }
+                
+                // 只選擇看起來像是店家地址的結果
+                if (result.class === 'shop' || result.class === 'amenity' || 
+                    result.type === 'restaurant' || result.type === 'shop' ||
+                    displayName.includes('號') || displayName.includes('樓') || 
+                    displayName.includes('巷') || displayName.includes('弄')) {
+                    
+                    return {
+                        fullAddress: result.display_name,
+                        lat: parseFloat(result.lat),
+                        lon: parseFloat(result.lon),
+                        displayName: result.name,
+                        source: "Nominatim 精確搜尋"
+                    };
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("Nominatim 精確搜尋失敗:", e);
+    }
+    return null;
+}
+
+// ----- LocationIQ 精確搜尋 -----
+async function searchLocationIqPrecise(searchQuery) {
+    try {
+        const url = `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(searchQuery)}&format=json&addressdetails=1&limit=5&countrycodes=TW,JP`;
+        const response = await fetchWithTimeout(url, {}, 8000);
+        const data = await response.json();
+        
+        // 尋找最匹配的結果
+        for (const result of data) {
+            if (result.display_name && result.lat && result.lon) {
+                return {
+                    fullAddress: result.display_name,
+                    lat: parseFloat(result.lat),
+                    lon: parseFloat(result.lon),
+                    displayName: result.name,
+                    source: "LocationIQ 精確搜尋"
+                };
+            }
+        }
+    } catch (e) {
+        console.warn("LocationIQ 精確搜尋失敗:", e);
+    }
+    return null;
+}
+
+// ----- 計算店家名稱相似度 -----
+function calculateNameSimilarity(name1, name2) {
+    if (!name1 || !name2) return 0;
+    
+    const n1 = name1.toLowerCase().trim();
+    const n2 = name2.toLowerCase().trim();
+    
+    // 完全匹配
+    if (n1 === n2) return 1.0;
+    
+    // 包含關係
+    if (n1.includes(n2) || n2.includes(n1)) return 0.9;
+    
+    // 使用 Levenshtein 距離計算相似度
+    const maxLength = Math.max(n1.length, n2.length);
+    const distance = levenshtein(n1, n2);
+    const similarity = 1 - (distance / maxLength);
+    
+    return similarity;
+}
+
+// ----- 透過店家名稱搜尋精確地址 -----
+async function geocodeByName(restaurantName) {
+    if (!restaurantName || restaurantName === "查無資料") return null;
+    
+    // 取得目前搜尋的城市和區域作為限制條件
+    const city = citySelect.value || "";
+    const district = districtSelect.value || "";
+    const searchQuery = `${restaurantName}, ${district}, ${city}`.replace(/, ,/g, ',').replace(/,$/, '');
+    
+    try {
+        // 使用多個 API 來源嘗試精確搜尋
+        const results = await Promise.allSettled([
+            // 1. Google Maps Geocoding API (如果有 API key)
+            searchGoogleGeocoding(restaurantName, city, district),
+            // 2. Nominatim 精確搜尋
+            searchNominatimPrecise(searchQuery),
+            // 3. LocationIQ 精確搜尋  
+            searchLocationIqPrecise(searchQuery)
+        ]);
+        
+        // 找到最可靠的結果
+        for (const result of results) {
+            if (result.status === 'fulfilled' && result.value) {
+                const candidate = result.value;
+                
+                // 驗證結果的可靠性
+                if (isReliableAddress(candidate.fullAddress) && 
+                    candidate.lat && candidate.lon) {
+                    
+                    // 確保店家名稱相似度足夠高
+                    const nameSimilarity = calculateNameSimilarity(restaurantName, candidate.displayName || candidate.name || '');
+                    if (nameSimilarity > 0.7) {
+                        return {
+                            fullAddress: candidate.fullAddress,
+                            lat: candidate.lat,
+                            lon: candidate.lon,
+                            name: candidate.displayName || candidate.name,
+                            source: candidate.source
+                        };
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("店家名稱精確搜尋失敗:", e);
+    }
+    
+    return null;
+}
+
+// ----- Google Maps Geocoding 精確搜尋 -----
+async function searchGoogleGeocoding(restaurantName, city, district) {
+    try {
+        // 注意：這裡需要 Google Maps Geocoding API key
+        // 如果沒有 API key，跳過這個方法
+        if (!GOOGLE_GEOCODING_API_KEY) {
+            return null;
+        }
+        
+        const query = `${restaurantName}, ${district}, ${city}`;
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_GEOCODING_API_KEY}&language=zh-TW`;
+        
+        const response = await fetchWithTimeout(url, {}, 8000);
+        const data = await response.json();
+        
+        if (data.status === 'OK' && data.results.length > 0) {
+            const result = data.results[0];
+            return {
+                fullAddress: result.formatted_address,
+                lat: result.geometry.location.lat,
+                lon: result.geometry.location.lng,
+                displayName: restaurantName,
+                source: "Google Geocoding"
+            };
+        }
+    } catch (e) {
+        console.warn("Google Geocoding 搜尋失敗:", e);
+    }
+    return null;
+}
+
+// ----- Nominatim 精確搜尋 -----
+async function searchNominatimPrecise(searchQuery) {
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(searchQuery)}&limit=3&countrycodes=tw,jp`;
+        const response = await fetchWithTimeout(url, { headers: {"Accept": "application/json"} }, 8000);
+        const data = await response.json();
+        
+        if (data.length > 0) {
+            const result = data[0];
+            return {
+                fullAddress: result.display_name,
+                lat: parseFloat(result.lat),
+                lon: parseFloat(result.lon),
+                displayName: result.name,
+                source: "Nominatim 精確搜尋"
+            };
+        }
+    } catch (e) {
+        console.warn("Nominatim 精確搜尋失敗:", e);
+    }
+    return null;
+}
+
+// ----- LocationIQ 精確搜尋 -----
+async function searchLocationIqPrecise(searchQuery) {
+    try {
+        const url = `https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(searchQuery)}&format=json&addressdetails=1&limit=5&countrycodes=TW,JP`;
+        const response = await fetchWithTimeout(url, {}, 8000);
+        const data = await response.json();
+        
+        // 尋找最匹配的結果，優先排除行政機關
+        for (const result of data) {
+            if (result.display_name && result.lat && result.lon) {
+                // 排除明顯不是店家的結果
+                const displayName = (result.display_name || "").toLowerCase();
+                const excludeKeywords = ['辦公處', '區公所', '里辦公處', '派出所', '學校', '公園', '市場', '醫院', '郵局'];
+                
+                if (excludeKeywords.some(keyword => displayName.includes(keyword))) {
+                    continue; // 跳過這些結果
+                }
+                
+                // 只選擇看起來像是店家地址的結果
+                if (result.class === 'shop' || result.class === 'amenity' || 
+                    result.type === 'restaurant' || result.type === 'shop' ||
+                    displayName.includes('號') || displayName.includes('樓') || 
+                    displayName.includes('巷') || displayName.includes('弄')) {
+                    
+                    return {
+                        fullAddress: result.display_name,
+                        lat: parseFloat(result.lat),
+                        lon: parseFloat(result.lon),
+                        displayName: result.name,
+                        source: "LocationIQ 精確搜尋"
+                    };
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("LocationIQ 精確搜尋失敗:", e);
+    }
+    return null;
+}
+
+// ----- 計算店家名稱相似度 -----
+function calculateNameSimilarity(name1, name2) {
+    if (!name1 || !name2) return 0;
+    
+    const n1 = name1.toLowerCase().trim();
+    const n2 = name2.toLowerCase().trim();
+    
+    // 完全匹配
+    if (n1 === n2) return 1.0;
+    
+    // 包含關係
+    if (n1.includes(n2) || n2.includes(n1)) return 0.9;
+    
+    // 使用 Levenshtein 距離計算相似度
+    const maxLength = Math.max(n1.length, n2.length);
+    const distance = levenshtein(n1, n2);
+    const similarity = 1 - (distance / maxLength);
+    
+    return similarity;
 }
 
 // ----- Levenshtein -----
@@ -398,6 +755,152 @@ function levenshtein(a,b){if(a.length===0) return b.length; if(b.length===0) ret
 
 // ----- Map / Marker -----
 function clearMarkers(){ currentMarkers.forEach(m=>map.removeLayer(m)); currentMarkers=[]; }
+
+// 高亮顯示特定 marker
+function highlightMarker(lat, lon, name) {
+    // 先重置所有 marker 的樣式
+    currentMarkers.forEach(marker => {
+        try {
+            // 恢復預設圖標
+            marker.setIcon(L.icon({
+                iconUrl: 'https://unpkg.com/leaflet/dist/images/marker-icon.png',
+                shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            }));
+            
+            // 隱藏或恢復原始 tooltip
+            if (marker.isUserLocation) {
+                // 使用者位置永久顯示
+                marker.bindTooltip("👤 您的位置", { permanent: true, direction: 'top' });
+            } else if (marker.restaurantData) {
+                // 餐廳位置恢復為非永久顯示
+                marker.bindTooltip(marker.restaurantData.name, { permanent: false, direction: 'top' });
+                marker.closeTooltip();
+            }
+        } catch (e) {
+            console.warn("重置 marker 樣式失敗:", e);
+        }
+    });
+
+    // 找到目標 marker 並高亮
+    const targetMarker = currentMarkers.find(marker => {
+        const pos = marker.getLatLng();
+        return Math.abs(pos.lat - lat) < 0.0001 && Math.abs(pos.lng - lon) < 0.0001;
+    });
+
+    if (targetMarker) {
+        try {
+            // 根據類型設定不同顏色的高亮圖標
+            let iconUrl;
+            if (targetMarker.isUserLocation) {
+                // 使用者位置使用綠色
+                iconUrl = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png';
+            } else {
+                // 餐廳使用紅色
+                iconUrl = 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png';
+            }
+
+            targetMarker.setIcon(L.icon({
+                iconUrl: iconUrl,
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            }));
+            
+            // 永久顯示 tooltip
+            targetMarker.bindTooltip(name, { 
+                permanent: true, 
+                direction: 'top',
+                className: 'highlighted-tooltip'
+            }).openTooltip();
+            
+            // 輕微跳動效果
+            let bounceCount = 0;
+            const bounceInterval = setInterval(() => {
+                if (bounceCount >= 6) {
+                    clearInterval(bounceInterval);
+                    return;
+                }
+                const offset = bounceCount % 2 === 0 ? -5 : 0;
+                targetMarker.setZIndexOffset(offset);
+                bounceCount++;
+            }, 100);
+            
+        } catch (e) {
+            console.warn("高亮 marker 失敗:", e);
+        }
+    }
+}
+
+// 額外新增：專門高亮使用者位置的函數
+function highlightUserLocation() {
+    if (!userLocation) return;
+    
+    // 先重置所有 marker
+    currentMarkers.forEach(marker => {
+        try {
+            marker.setIcon(L.icon({
+                iconUrl: 'https://unpkg.com/leaflet/dist/images/marker-icon.png',
+                shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            }));
+            
+            if (marker.isUserLocation) {
+                marker.bindTooltip("👤 您的位置", { permanent: true, direction: 'top' });
+            } else if (marker.restaurantData) {
+                marker.bindTooltip(marker.restaurantData.name, { permanent: false, direction: 'top' });
+                marker.closeTooltip();
+            }
+        } catch (e) {
+            console.warn("重置 marker 樣式失敗:", e);
+        }
+    });
+
+    // 找到並高亮使用者位置
+    const userMarker = currentMarkers.find(marker => marker.isUserLocation);
+    if (userMarker) {
+        try {
+            userMarker.setIcon(L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            }));
+            
+            userMarker.bindTooltip("👤 您目前的位置", { 
+                permanent: true, 
+                direction: 'top',
+                className: 'highlighted-tooltip'
+            }).openTooltip();
+            
+            // 跳動效果
+            let bounceCount = 0;
+            const bounceInterval = setInterval(() => {
+                if (bounceCount >= 6) {
+                    clearInterval(bounceInterval);
+                    return;
+                }
+                const offset = bounceCount % 2 === 0 ? -5 : 0;
+                userMarker.setZIndexOffset(offset);
+                bounceCount++;
+            }, 100);
+            
+        } catch (e) {
+            console.warn("高亮使用者位置失敗:", e);
+        }
+    }
+}
+
 function isWithinBounds(lat,lon,bbox,polygonGeo){
   if(bbox){ const [south,north,west,east]=bbox; if(lat<south||lat>north||lon<west||lon>east) return false; }
   if(polygonGeo && !pointInPolygon([lon,lat],polygonGeo)) return false;
@@ -430,6 +933,9 @@ function createActionButtons(lat, lon, name, r) {
         map.setView([lat, lon], 17);
         const mapEl = document.getElementById("map");
         if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        
+        // 找到對應的 marker 並高亮顯示
+        highlightMarker(lat, lon, name);
     });
 
     // --- 在 Google Maps 開啟 ---
@@ -437,18 +943,16 @@ function createActionButtons(lat, lon, name, r) {
     btnMaps.textContent = "🗺️ GoogleMap";
     btnMaps.classList.add("action-btn", "google-btn");
     btnMaps.addEventListener("click", () => {
-        let query;
-        if (hasReliableAddress) {
-            query = encodeURIComponent(fullAddress);
-        } else {
-            query = `${lat},${lon}`;
+        let queryForMap = r.geocodeAddress;  // 使用 mergeGeocodeInfo 處理後的地址
+        if (!isReliableAddress(queryForMap)) {
+            queryForMap = `${lat},${lon}`;
             alert(`注意：${name} 地址資料不足，本次使用經緯度顯示`);
         }
         // 若營業時間是備援欄位，也提示
         if (!t.opening_hours && (t.note || t.description || t.operator)) {
             alert(`⚠️ ${name} 的營業時間來自 OSM 備援欄位 (note/description/operator)，可能不完整`);
         }
-        handleMapClick("search", query);
+        handleMapClick("search", queryForMap);
     });
 
     // --- 導航 ---
@@ -564,6 +1068,9 @@ function renderRestaurants(restaurants) {
         const userMarker = L.marker([userLocation.lat, userLocation.lon])
             .addTo(map)
             .bindTooltip("👤 您的位置", {permanent:true, direction:'top'});
+        // 將使用者位置資訊存到 marker 中
+        userMarker.isUserLocation = true;
+        userMarker.userLocationData = { lat: userLocation.lat, lon: userLocation.lon };
         currentMarkers.push(userMarker);
     }
 
@@ -607,6 +1114,8 @@ function renderRestaurants(restaurants) {
         // Marker
         const marker = L.marker([lat, lon]).addTo(map);
         marker.bindTooltip(name, { permanent: false, direction: 'top' });
+        // 將餐廳資訊存到 marker 中，方便後續查找
+        marker.restaurantData = { lat, lon, name };
         currentMarkers.push(marker);
         bounds.extend([lat, lon]);
 
@@ -633,15 +1142,26 @@ function renderRestaurants(restaurants) {
         cardLeft.appendChild(cardHours);
 
         // 資料來源備註
-        const addressSource = isReliableAddress(rawAddress) ? "OSM / 經緯度備援" : null;
+        const addressSource = r.addressSource || (isReliableAddress(rawAddress) ? "OSM / 經緯度備援" : "經緯度備援");
         const hoursSource = t.opening_hours ? "OSM" : (t.note || t.description || t.operator) ? "OSM 備援" : null;
+        
+        // 精確位置提示
+        let accuracyInfo = [];
+        if (r.preciseLocation) {
+            accuracyInfo.push("🎯 精確定位");
+        }
+        if (addressSource && addressSource.includes("精確")) {
+            accuracyInfo.push("✨ 精確地址");
+        }
 
-        if (addressSource || hoursSource) {
+        const sourceText = [];
+        sourceText.push("地址來源：" + addressSource);
+        if (hoursSource) sourceText.push("營業時間來源：" + hoursSource);
+        if (accuracyInfo.length > 0) sourceText.push(accuracyInfo.join(" "));
+
+        if (sourceText.length > 0) {
             const cardSource = document.createElement("p");
             cardSource.className = "card-sub small";
-            const sourceText = [];
-            if (addressSource) sourceText.push("地址來源：" + addressSource);
-            if (hoursSource) sourceText.push("營業時間來源：" + hoursSource);
             cardSource.textContent = sourceText.join("，");
             cardLeft.appendChild(cardSource);
         }
@@ -663,6 +1183,11 @@ function renderRestaurants(restaurants) {
     });
 
     if (currentMarkers.length > 0) map.fitBounds(bounds.pad(0.3));
+    
+    // 如果有使用者位置，保持高亮狀態
+    if (userLocation && currentMarkers.find(m => m.isUserLocation)) {
+        setTimeout(() => highlightUserLocation(), 500);
+    }
 }
 
 // ----- Main Search -----

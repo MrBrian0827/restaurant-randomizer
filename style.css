@@ -427,3 +427,21 @@ body.dark-mode .suggestion-item:hover { background: #333; }
   width: 100%;
   justify-content: center;
 }
+
+/* 高亮 tooltip 樣式 */
+.highlighted-tooltip {
+  background-color: #e4572e !important;
+  color: white !important;
+  font-weight: bold !important;
+  border: 2px solid #d43a1a !important;
+  border-radius: 6px !important;
+  padding: 6px 10px !important;
+  box-shadow: 0 2px 8px rgba(228, 87, 46, 0.4) !important;
+}
+
+/* 深色模式下的高亮 tooltip */
+html.dark-mode .highlighted-tooltip {
+  background-color: #ff6b35 !important;
+  border-color: #e4572e !important;
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.5) !important;
+  }
