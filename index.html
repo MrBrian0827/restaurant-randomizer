@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
@@ -57,7 +57,6 @@
           <div id="searchInfo" class="small" style="margin-bottom:6px;"></div>
         </div>
 
-        <div id="searchInfo" class="small" style="margin-bottom:6px;"></div>
 
         <div class="col actions-col">
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -139,27 +138,8 @@
 
   <!-- App logic -->
   <script src="script.js"></script>
-
-  <!-- 說明按鈕 JS -->
-  <script>
-    const helpBtn = document.getElementById('helpBtn');
-    const helpModal = document.getElementById('helpModal');
-    const closeHelpBtn = document.getElementById('closeHelpBtn');
-
-    helpBtn.addEventListener('click', () => {
-      helpModal.classList.remove('hidden');
-    });
-
-    closeHelpBtn.addEventListener('click', () => {
-      helpModal.classList.add('hidden');
-    });
-
-    // 點擊彈窗外部也關閉
-    helpModal.addEventListener('click', (e) => {
-      if (e.target === helpModal) {
-        helpModal.classList.add('hidden');
-      }
-    });
-  </script>
 </body>
 </html>
+
+
+

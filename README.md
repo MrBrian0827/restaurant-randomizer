@@ -114,4 +114,4 @@ UI：
 
 布萊恩
 
-Cheat GPT（協助程式設計與功能規劃）
+Cheat GPT 、 Big Pickle（協助程式設計與功能規劃）

@@ -1,4 +1,4 @@
-/* ===========================
+﻿/* ===========================
    Global Variables (default)
 =========================== */
 :root {
@@ -428,6 +428,28 @@ body.dark-mode .suggestion-item:hover { background: #333; }
   justify-content: center;
 }
 
+/* Custom marker pin (no external image dependency) */
+.custom-pin-wrapper {
+  background: transparent;
+  border: 0;
+}
+
+.custom-pin {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.custom-pin-user {
+  background: #10b981;
+}
+
+.custom-pin-restaurant {
+  background: #ef4444;
+}
 /* 高亮 tooltip 樣式 */
 .highlighted-tooltip {
   background-color: #e4572e !important;
