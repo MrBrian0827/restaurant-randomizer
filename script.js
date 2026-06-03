@@ -9,9 +9,14 @@ const ua = navigator.userAgent || navigator.vendor || window.opera;
 const API_KEY = "pk.bc63f534da0350a75d49564feb994bfd"; // <- 換成你的 key
 const PRECISE_SEARCH_ENABLED = true; // 啟用精確搜尋功能
 const GOOGLE_GEOCODING_API_KEY = ""; // 如果有 Google Geocoding API key，請填入
-const LOCATIONIQ_RETRY = 2;
-const NOMINATIM_RETRY = 2;
-const OVERPASS_RETRY = 3;
+const LOCATIONIQ_RETRY = 1;
+const NOMINATIM_RETRY = 1;
+const OVERPASS_RETRY = 0;
+const GEOCODE_TIMEOUT_MS = 6000;
+const OVERPASS_TIMEOUT_MS = 10000;
+const SEARCH_TIMEOUT_MS = 30000;
+const GEOLOCATION_TIMEOUT_MS = 10000;
+const JAPAN_DEFAULT_RADIUS = 1800;
 const OVERPASS_SERVERS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
@@ -24,6 +29,7 @@ const districtSelect = document.getElementById("districtSelect");
 const streetInput = document.getElementById("streetInput");
 const streetSuggestions = document.getElementById("streetSuggestions");
 const typeSelect = document.getElementById("typeSelect");
+const typeDisplay = document.getElementById("typeDisplay");
 const radiusInput = document.getElementById("radiusInput");
 const radiusLabel = document.getElementById("radiusLabel");
 const searchBtn = document.getElementById("searchBtn");
@@ -31,6 +37,7 @@ const reshuffleBtn = document.getElementById("reshuffleBtn");
 const resultsPanel = document.getElementById("resultsPanel");
 const locateBtn = document.getElementById("locateBtn");
 const resetBtn = document.getElementById("resetSearchBtn");
+const clearLocationBtn = document.getElementById("clearLocationBtn");
 const loadingEl = document.getElementById("loading");
 const searchInfoEl = document.getElementById("searchInfo");
 const countrySelect = document.getElementById("countrySelect"); // 新增國家選擇
@@ -183,7 +190,24 @@ const BBQ_FAST_QUERIES = [
   `way["amenity"="restaurant"]["name"~"燒肉|烧肉|燒烤|烧烤|烤肉|烤串|串燒|串烧|BBQ|Barbecue|Yakiniku|Yakitori",i]`
 ];
 
-let currentMapping = CATEGORY_MAPPING; // 使用精準分類映射
+function uniqQueries(...groups) {
+  return Array.from(new Set(groups.flat().filter(Boolean)));
+}
+
+const COMPACT_CATEGORY_MAPPING = {
+  restaurant: CATEGORY_MAPPING.restaurant,
+  chinese_taiwanese: uniqQueries(CATEGORY_MAPPING.taiwanese, CATEGORY_MAPPING.chinese),
+  japanese_korean: uniqQueries(CATEGORY_MAPPING.japanese, CATEGORY_MAPPING.korean),
+  western: uniqQueries(CATEGORY_MAPPING.italian, CATEGORY_MAPPING.steak),
+  hotpot_bbq: uniqQueries(CATEGORY_MAPPING.hotpot, BBQ_FAST_QUERIES),
+  seafood: CATEGORY_MAPPING.seafood,
+  vegetarian: CATEGORY_MAPPING.vegetarian,
+  quick_bites: uniqQueries(CATEGORY_MAPPING.fast_food, CATEGORY_MAPPING.food_court),
+  cafe_dessert: uniqQueries(CATEGORY_MAPPING.cafe, CATEGORY_MAPPING.bakery, CATEGORY_MAPPING.dessert, CATEGORY_MAPPING.beverages),
+  bar: CATEGORY_MAPPING.bar
+};
+
+let currentMapping = COMPACT_CATEGORY_MAPPING; // 使用精簡大分類映射
 let map = L.map("map", { zoomControl: true }).setView([25.033964,121.564468], 13);
 const TILE_PROVIDERS = [
   {
@@ -250,6 +274,7 @@ let userLocation = null;
 let hasUsedLocate = false; // ⭐ 新增：是否曾點擊「取得我的位置」
 let hasSearched = false; // ⭐ 是否真的執行過「搜尋餐廳」
 let lastSearchCenter = null;
+let lastSearchTypeLabel = "";
 let allRestaurants = [];
 let networkOnlineCache = null;
 let networkLastCheck = 0;
@@ -277,110 +302,153 @@ const restaurantSearchCache = new Map();
 const geocodeQueryCache = new Map();
 const geocodeEnrichCache = new Map();
 let activeRenderToken = 0;
+let activeGeolocationWatchId = null;
+let locationRequestToken = 0;
+
+function getDefaultMapView() {
+  return currentCountry === "jp"
+    ? { center: [35.681236, 139.767125], zoom: 12 }
+    : { center: [25.033964, 121.564468], zoom: 13 };
+}
+
+function resetMapToDefault() {
+  const view = getDefaultMapView();
+  map.setView(view.center, view.zoom);
+}
+
+function stopLocationTracking() {
+  locationRequestToken += 1;
+  if (activeGeolocationWatchId !== null && navigator.geolocation?.clearWatch) {
+    navigator.geolocation.clearWatch(activeGeolocationWatchId);
+  }
+  activeGeolocationWatchId = null;
+}
+
+function setReshuffleVisible(visible) {
+  if (!reshuffleBtn) return;
+  reshuffleBtn.style.display = visible ? (isMobile() ? "block" : "flex") : "none";
+  reshuffleBtn.disabled = !visible;
+}
+
+function updateLocationHomeButton() {
+  if (!clearLocationBtn) return;
+  clearLocationBtn.style.display = (hasUsedLocate || userLocation) ? "" : "none";
+}
+
+function hideCurrentAddress() {
+  const addrEl = document.getElementById("currentAddress");
+  if (!addrEl) return;
+  addrEl.textContent = "";
+  addrEl.style.display = "none";
+}
+
+function addUserLocationMarker() {
+  if (!userLocation) return;
+  const marker = L.marker([userLocation.lat, userLocation.lon], { icon: DEFAULT_MARKER_ICON }).addTo(map);
+  marker.bindTooltip("👤 您目前的位置", {permanent:false, direction:'top'});
+  marker.isUserLocation = true;
+  marker.userLocationData = { lat: userLocation.lat, lon: userLocation.lon };
+  currentMarkers.push(marker);
+}
+
+function clearSearchResults() {
+  activeRenderToken += 1;
+  hasSearched = false;
+  lastRestaurants = [];
+  shownRestaurantsKeys.clear();
+  if (resultsPanel) resultsPanel.innerHTML = "";
+  setReshuffleVisible(false);
+}
+
+function resetToSearchConditions() {
+  clearSearchResults();
+  toggleUIForMobile(true, Boolean(userLocation));
+  if (resetBtn) resetBtn.style.display = "none";
+  if (searchBtn) searchBtn.style.display = "";
+  if (locateBtn) locateBtn.style.display = userLocation ? "none" : "";
+  updateLocationHomeButton();
+  setTypeSelectionLocked(false);
+  updateRadiusVisibility();
+  clearMarkers();
+  if (userLocation) {
+    addUserLocationMarker();
+    map.setView([userLocation.lat, userLocation.lon], 15);
+    setTimeout(() => highlightUserLocation(), 300);
+  }
+  updateSearchInfo();
+}
+
+function resetToHomeWithoutLocation() {
+  stopLocationTracking();
+  userLocation = null;
+  hasUsedLocate = false;
+  streetInput.value = "";
+  streetSuggestions.innerHTML = "";
+  clearSearchResults();
+  hideCurrentAddress();
+  toggleUIForMobile(true, false);
+  setTypeSelectionLocked(false);
+  if (resetBtn) resetBtn.style.display = "none";
+  if (searchBtn) searchBtn.style.display = "";
+  if (locateBtn) locateBtn.style.display = "";
+  updateLocationHomeButton();
+  clearMarkers();
+  resetMapToDefault();
+  updateRadiusVisibility();
+  updateSearchInfo();
+}
 
 if (locateBtn) {
   locateBtn.addEventListener("click", async () => {
-  userLocation = null;  // 強制清空位置，每次都重新嘗試
-  hasUsedLocate = true; // ⭐ 使用者明確點過定位
-  updateRadiusVisibility();
+      stopLocationTracking();
+      userLocation = null;
+      hasUsedLocate = true;
+      updateRadiusVisibility();
+      updateLocationHomeButton();
       if(!navigator.geolocation){
           alert("此裝置不支援定位");
           return;
       }
+      const requestToken = locationRequestToken;
       showLoading(); setBusy(true);
       navigator.geolocation.getCurrentPosition(
         async(pos)=>{
+            if (requestToken !== locationRequestToken) return;
             userLocation = {lat: pos.coords.latitude, lon: pos.coords.longitude};
-            // 顯示目前地址
             const addrEl = document.getElementById("currentAddress");
             const addrData = await geocode(`${userLocation.lat},${userLocation.lon}`);
+            if (requestToken !== locationRequestToken) return;
             if (addrEl && addrData?.raw?.display_name) {
                 addrEl.textContent = "📍 目前位置：" + addrData.raw.display_name;
                 addrEl.style.display = "";
             }
             clearMarkers();
-            const marker = L.marker([userLocation.lat, userLocation.lon], { icon: DEFAULT_MARKER_ICON }).addTo(map);
-            marker.bindTooltip("👤 您目前的位置", {permanent:false, direction:'top'});
-            // 將使用者位置資訊存到 marker 中
-            marker.isUserLocation = true;
-            marker.userLocationData = { lat: userLocation.lat, lon: userLocation.lon };
-            currentMarkers.push(marker);
-
-            // 高亮使用者位置
+            addUserLocationMarker();
             setTimeout(() => highlightUserLocation(), 300);
             map.setView([userLocation.lat, userLocation.lon], 15);
             locateBtn.style.display = "none";
-            if(isMobile()) toggleUIForMobile(false, true); // ✅ 保留半徑欄位
-            
-            // 高亮使用者位置
+            updateLocationHomeButton();
+            if(isMobile()) toggleUIForMobile(false, true);
             setTimeout(() => highlightUserLocation(), 300);
-            
             hideLoading(); setBusy(false);
-        }, 
+        },
         (err)=>{
-            alert("無法取得定位，請確認瀏覽器允許定位權限，或重新整理頁面再嘗試");
+            if (requestToken !== locationRequestToken) return;
+            const timedOut = err && err.code === err.TIMEOUT;
+            alert(timedOut ? "定位逾時，請確認 GPS / 網路狀態後再試" : "無法取得定位，請確認瀏覽器允許定位權限，或重新整理頁面再嘗試");
             hideLoading(); setBusy(false);
-        }
+        },
+        { enableHighAccuracy: false, maximumAge: 60000, timeout: GEOLOCATION_TIMEOUT_MS }
       );
   });
 }
 
-// 「重新搜尋條件」按鈕
 if (resetBtn) {
-    resetBtn.addEventListener("click", () => {
+    resetBtn.addEventListener("click", resetToSearchConditions);
+}
 
-        // 1️⃣ 展開完整 UI（不保留半徑）
-        toggleUIForMobile(true, false);
-
-        // 2️⃣ 重置定位狀態
-        hasUsedLocate = false;
-        userLocation = null;
-
-        lastRestaurants = [];
-
-        // 3️⃣ 清空輸入與結果
-        streetInput.value = "";
-        streetSuggestions.innerHTML = "";
-        resultsPanel.innerHTML = "";
-
-        // 4️⃣ 搜尋 / 定位按鈕恢復
-        searchBtn.style.display = "";
-        locateBtn.style.display = "";
-        reshuffleBtn.style.display = "none"; // ⭐ 一開始不顯示
-        reshuffleBtn.disabled = true;
-        hasSearched = false;
-
-        // 5️⃣ 回到預設地圖
-        map.setView([25.033964, 121.564468], 13);
-        clearMarkers();
-
-        // ⭐ 清空定位
-        userLocation = null;
-        hasUsedLocate = false;
-
-        // ⭐ 清空搜尋狀態
-        hasSearched = false;
-        lastRestaurants = [];
-
-        // ⭐ 隱藏「目前位置」顯示文字
-        const addrEl = document.getElementById("currentAddress");
-        if (addrEl) {
-            addrEl.textContent = "";
-            addrEl.style.display = "none";
-        }
-
-        // ⭐ 強制隱藏「重新抽選三家」
-        reshuffleBtn.style.display = "none";
-        reshuffleBtn.disabled = true;
-
-        updateRadiusVisibility();
-
-        // ⭐ reset = 強制回到初始狀態，半徑一律隱藏
-        radiusInput.style.display = "none";
-        radiusLabel.style.display = "none";
-        const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
-        if (radiusLabelEl) radiusLabelEl.style.display = "none";
-    });
+if (clearLocationBtn) {
+    clearLocationBtn.addEventListener("click", resetToHomeWithoutLocation);
 }
 
 if(!isMobile() && locateBtn){
@@ -391,13 +459,15 @@ if(!isMobile() && locateBtn){
 function showLoading() { if(loadingEl) loadingEl.classList.add('show'); }
 function hideLoading() { if(loadingEl) loadingEl.classList.remove('show'); }
 function setBusy(val){
-  searchBtn.disabled = val;
-  reshuffleBtn.disabled = val;
-  citySelect.disabled = val;
-  districtSelect.disabled = val;
-  streetInput.disabled = val;
-  typeSelect.disabled = val;
-  locateBtn.disabled = val;
+  if (searchBtn) searchBtn.disabled = val;
+  if (reshuffleBtn) reshuffleBtn.disabled = val || !hasSearched;
+  if (citySelect) citySelect.disabled = val;
+  if (districtSelect) districtSelect.disabled = val;
+  if (streetInput) streetInput.disabled = val;
+  if (typeSelect) typeSelect.disabled = val;
+  if (locateBtn) locateBtn.disabled = val;
+  if (resetBtn) resetBtn.disabled = val;
+  if (clearLocationBtn) clearLocationBtn.disabled = val;
 }
 async function fetchWithTimeout(url, opts={}, timeout=10000){
   const controller = opts.signal ? null : new AbortController();
@@ -413,6 +483,13 @@ async function fetchWithRetry(fetchFn, retries = 2, delay = 500){
     catch(e){ lastError=e; if(i<retries) await new Promise(r=>setTimeout(r,delay)); }
   }
   throw lastError;
+}
+function withTimeout(promise, timeout, message = "操作逾時") {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeout);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
 }
 function readCache(cache,key){
   const hit=cache.get(key);
@@ -508,9 +585,21 @@ populateCitiesAndDistricts();
 countrySelect.addEventListener("change",()=>{
   currentCountry=countrySelect.value;
   populateCitiesAndDistricts();
-  if(currentCountry==="jp") alert("⚠️ 日本地區資料可能不完整，部分城市或餐廳資訊缺失");
   const titleEl=document.querySelector(".header h1"); if(titleEl) titleEl.textContent=currentCountry==="tw"?"台灣餐廳隨機推薦器":"日本餐廳隨機推薦器";
-  streetInput.value=""; streetSuggestions.innerHTML=""; resultsPanel.innerHTML=""; map.setView([25.033964,121.564468],13);
+  streetInput.value="";
+  streetSuggestions.innerHTML="";
+  resultsPanel.innerHTML="";
+  stopLocationTracking();
+  userLocation = null;
+  hasUsedLocate = false;
+  hasSearched = false;
+  hideCurrentAddress();
+  updateLocationHomeButton();
+  setReshuffleVisible(false);
+  clearMarkers();
+  resetMapToDefault();
+  updateRadiusVisibility();
+  updateSearchInfo();
 });
 citySelect.addEventListener("change",()=>{ const dataSource=countrySelect.value==="jp"?window.japanData:window.taiwanData; populateDistricts(dataSource, citySelect.value); updateSearchInfo(); });
 
@@ -519,11 +608,7 @@ districtSelect.addEventListener("change", () => {
     streetInput.value = "";
     streetSuggestions.innerHTML = "";
 
-    // 隱藏半徑欄位（只有填街道時才顯示）
-    radiusInput.style.display = "none";
-    radiusLabel.style.display = "none";
-    const radiusLabelEl = document.querySelector('label[for="radiusInput"]');
-    if(radiusLabelEl) radiusLabelEl.style.display = "none";
+    updateRadiusVisibility();
 
     // 更新目前搜尋訊息
     updateSearchInfo();
@@ -536,26 +621,47 @@ radiusInput.addEventListener("input", updateSearchInfo);
 const typeOptions=[
   {label:"全部",value:""},
   {label:"一般餐廳",value:"restaurant"},
-  {label:"台式",value:"taiwanese"},
-  {label:"中式",value:"chinese"},
-  {label:"日式",value:"japanese"},
-  {label:"韓式",value:"korean"},
-  {label:"義式",value:"italian"},
-  {label:"牛排",value:"steak"},
-  {label:"火鍋",value:"hotpot"},
-  {label:"燒烤",value:"bbq"},
+  {label:"中式 / 台式",value:"chinese_taiwanese"},
+  {label:"日韓料理",value:"japanese_korean"},
+  {label:"西式 / 異國",value:"western"},
+  {label:"火鍋 / 燒烤",value:"hotpot_bbq"},
   {label:"海鮮",value:"seafood"},
-  {label:"素食 / 純素",value:"vegetarian"},
-  {label:"速食",value:"fast_food"},
-  {label:"咖啡店",value:"cafe"},
-  {label:"烘焙 / 麵包",value:"bakery"},
-  {label:"甜點",value:"dessert"},
-  {label:"飲料 / 手搖",value:"beverages"},
-  {label:"酒吧 / Pub",value:"bar"},
-  {label:"美食街",value:"food_court"}
+  {label:"素食",value:"vegetarian"},
+  {label:"速食 / 美食街",value:"quick_bites"},
+  {label:"咖啡 / 甜點 / 飲料",value:"cafe_dessert"},
+  {label:"酒吧 / Pub",value:"bar"}
 ];
 typeOptions.forEach(opt=>{ const o=document.createElement("option"); o.value=opt.value;o.textContent=opt.label; typeSelect.appendChild(o); });
 const CATEGORY_LABELS = Object.fromEntries(typeOptions.map(opt => [opt.value, opt.label]));
+
+function getSelectedTypeLabel() {
+  return CATEGORY_LABELS[typeSelect.value || ""] || "全部";
+}
+
+function getSimplifiedCategoryKey(primaryCategory) {
+  const category = primaryCategory || "restaurant";
+  if (["taiwanese", "chinese"].includes(category)) return "chinese_taiwanese";
+  if (["japanese", "korean"].includes(category)) return "japanese_korean";
+  if (["italian", "steak"].includes(category)) return "western";
+  if (["hotpot", "bbq"].includes(category)) return "hotpot_bbq";
+  if (["fast_food", "food_court"].includes(category)) return "quick_bites";
+  if (["cafe", "bakery", "dessert", "beverages"].includes(category)) return "cafe_dessert";
+  if (CATEGORY_LABELS[category]) return category;
+  return "restaurant";
+}
+
+function updateTypeDisplay(show, label = lastSearchTypeLabel || getSelectedTypeLabel()) {
+  if (!typeDisplay) return;
+  typeDisplay.textContent = `店家類型：${label}`;
+  typeDisplay.style.display = show ? "" : "none";
+}
+
+function setTypeSelectionLocked(locked) {
+  const typeLabel = document.querySelector('label[for="typeSelect"]');
+  if (typeSelect) typeSelect.style.display = locked ? "none" : "";
+  if (typeLabel) typeLabel.style.display = locked ? "none" : "";
+  updateTypeDisplay(locked, lastSearchTypeLabel);
+}
 
 function tokenizeCuisine(cuisineText) {
   return String(cuisineText || "")
@@ -602,15 +708,100 @@ function inferPrimaryCategory(tags) {
 
 // ----- Overpass -----
 async function overpassQuery(query){
+  const timedQuery = query.includes("[timeout:")
+    ? query
+    : query.replace("[out:json];", `[out:json][timeout:${Math.ceil(OVERPASS_TIMEOUT_MS / 1000)}];`);
   for(const endpoint of OVERPASS_SERVERS){
     try{
       return await fetchWithRetry(async()=>{
-        const r=await fetchWithTimeout(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:query},15000);
+        const r=await fetchWithTimeout(endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:timedQuery},OVERPASS_TIMEOUT_MS);
+        if(!r.ok) throw new Error(`Overpass HTTP ${r.status}`);
         const text=await r.text(); if(text.trim().startsWith('<')) throw new Error("HTML error, skip"); return JSON.parse(text);
       }, OVERPASS_RETRY);
     }catch(e){ console.warn(`Overpass attempt failed for ${endpoint}:`,e); }
   }
   console.warn("All Overpass servers failed"); return {elements:[]};
+}
+
+function normalizeJapanPlaceText(text) {
+  let value = String(text || "").trim();
+  const replacements = {
+    "東京都 23區": "東京都",
+    "東京都 23区": "東京都",
+    "23區": "",
+    "23区": "",
+    "區": "区",
+    "橫": "横",
+    "濱": "浜",
+    "澀": "渋",
+    "豐": "豊",
+    "戶": "戸",
+    "廣": "広",
+    "瀨": "瀬",
+    "綠": "緑",
+    "櫻": "桜",
+    "龍": "竜",
+    "臺": "台",
+    "國": "国",
+    "鐵": "鉄",
+    "溫": "温",
+    "邊": "辺",
+    "鄉": "郷",
+    "兒": "児",
+    "鹽": "塩",
+    "藝": "芸",
+    "榮": "栄",
+    "黑": "黒",
+    "麵": "麺",
+    "與": "与",
+    "帶": "帯",
+    "總": "総",
+    "灣": "湾",
+    "奧": "奥",
+    "澤": "沢",
+    "氣": "気",
+    "壽": "寿",
+    "站前": "駅前",
+    "站": "駅",
+    "周邊": "",
+    "周辺": "",
+    "地區": "",
+    "地区": "",
+    "埼玉市": "さいたま市",
+    "近鉄奈良": "近鉄奈良",
+    "近鐵奈良": "近鉄奈良"
+  };
+
+  Object.entries(replacements).forEach(([from, to]) => {
+    value = value.split(from).join(to);
+  });
+
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizePlaceForAdminMatch(text) {
+  return currentCountry === "jp"
+    ? normalizeJapanPlaceText(text).replace(/\s+/g, "")
+    : normalizeForMatch(text);
+}
+
+function adminTextMatches(source, ...targets) {
+  const normalizedSource = normalizePlaceForAdminMatch(source);
+  if (!normalizedSource) return true;
+  return targets.some(target => {
+    const normalizedTarget = normalizePlaceForAdminMatch(target);
+    return normalizedTarget &&
+      (normalizedSource === normalizedTarget ||
+       normalizedSource.includes(normalizedTarget) ||
+       normalizedTarget.includes(normalizedSource));
+  });
+}
+
+function buildLocationQuery(city, district, street) {
+  const rawQuery = [city, district, street].filter(Boolean).join(" ");
+  if (currentCountry !== "jp") return rawQuery;
+  const normalizedQuery = normalizeJapanPlaceText(rawQuery);
+  return [normalizedQuery, "日本"].filter(Boolean).join(" ");
 }
 
 // ----- Geocode -----
@@ -624,7 +815,7 @@ async function geocode(query){
   try{
     const result = await fetchWithRetry(async()=>{
       const url=`https://us1.locationiq.com/v1/search.php?key=${API_KEY}&q=${encodeURIComponent(qKey)}&format=json&addressdetails=1&limit=3`;
-      const r=await fetchWithTimeout(url,{},8000); if(!r.ok) throw new Error("LocationIQ failed");
+      const r=await fetchWithTimeout(url,{},GEOCODE_TIMEOUT_MS); if(!r.ok) throw new Error("LocationIQ failed");
       const j=await r.json(); if(j.length===0) throw new Error("No results from LocationIQ");
       return {lat:parseFloat(j[0].lat),lon:parseFloat(j[0].lon),raw:j[0]};
     }, LOCATIONIQ_RETRY);
@@ -635,7 +826,7 @@ async function geocode(query){
   try{
     const result = await fetchWithRetry(async()=>{
       const url=`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(qKey)}&limit=3`;
-      const r=await fetchWithTimeout(url,{headers:{"Accept":"application/json"}},8000); if(!r.ok) throw new Error("Nominatim failed");
+      const r=await fetchWithTimeout(url,{headers:{"Accept":"application/json"}},GEOCODE_TIMEOUT_MS); if(!r.ok) throw new Error("Nominatim failed");
       const j=await r.json(); if(j.length===0) throw new Error("No results from Nominatim");
       return {lat:parseFloat(j[0].lat),lon:parseFloat(j[0].lon),raw:j[0]};
     }, NOMINATIM_RETRY);
@@ -648,14 +839,18 @@ async function geocode(query){
 
 // ----- Find Restaurants -----
 async function findRestaurants(lat,lon,radius=1000,type='',streetQuery=''){
+  const effectiveRadius = currentCountry === "jp" && !streetQuery && !(hasUsedLocate && userLocation)
+    ? Math.max(radius, JAPAN_DEFAULT_RADIUS)
+    : radius;
   const arr = type === "bbq"
     ? BBQ_FAST_QUERIES
     : (type ? (currentMapping[type] || currentMapping["restaurant"]) : ALL_FAST_QUERIES);
+  const overpassTags = arr.filter(tag => !tag.startsWith("relation"));
 
   const targetCity = citySelect.value;
   const targetDistrict = districtSelect.value;
   const searchCacheKey = buildRestaurantSearchCacheKey({
-    lat, lon, radius, type, street: streetQuery, city: targetCity, district: targetDistrict, country: currentCountry
+    lat, lon, radius: effectiveRadius, type, street: streetQuery, city: targetCity, district: targetDistrict, country: currentCountry
   });
   const cachedResults = readCache(restaurantSearchCache, searchCacheKey);
   if (cachedResults) return cloneRestaurantElements(cachedResults);
@@ -665,7 +860,7 @@ async function findRestaurants(lat,lon,radius=1000,type='',streetQuery=''){
     const bb=lastSearchCenter.raw.boundingbox.map(parseFloat); bboxFilter=bb; polygonGeo=lastSearchCenter.raw.geojson||null;
   }
   function buildOverpassFilter(tag,lat,lon,radius,bbox){ return radius===0 && bbox?`${tag}(${bbox[0]},${bbox[2]},${bbox[1]},${bbox[3]});`:`${tag}(around:${radius},${lat},${lon});`; }
-  const filters=arr.map(s=>buildOverpassFilter(s,lat,lon,radius,bboxFilter));
+  const filters=overpassTags.map(s=>buildOverpassFilter(s,lat,lon,effectiveRadius,bboxFilter));
   const q=`[out:json];(${filters.join('')});out center tags;`;
   const data=await overpassQuery(q);
   const elements=data.elements||[];
@@ -722,8 +917,12 @@ async function findRestaurants(lat,lon,radius=1000,type='',streetQuery=''){
     const addrDistrict=(t["addr:district"]||t["addr:suburb"]||t["addr:village"]||"").trim();
     const maxDistCity=Math.floor(Math.max(addrCity.length,targetCity.length)*0.3);
     const maxDistDistrict=Math.floor(Math.max(addrDistrict.length,targetDistrict.length)*0.3);
-    const cityMatch=!addrCity||levenshtein(addrCity,targetCity)<=maxDistCity;
-    const districtMatch=!addrDistrict||levenshtein(addrDistrict,targetDistrict)<=maxDistDistrict;
+    const cityMatch = currentCountry === "jp"
+      ? adminTextMatches(addrCity, targetCity, targetDistrict)
+      : (!addrCity||levenshtein(addrCity,targetCity)<=maxDistCity);
+    const districtMatch = currentCountry === "jp"
+      ? adminTextMatches(addrDistrict, targetDistrict, targetCity)
+      : (!addrDistrict||levenshtein(addrDistrict,targetDistrict)<=maxDistDistrict);
 
     const streetSource = `${t["addr:street"] || ""}${t["addr:place"] || ""}${t.name || ""}`;
     const streetHit = targetStreetNorm ? normalizeForMatch(streetSource).includes(targetStreetNorm) : false;
@@ -2168,11 +2367,12 @@ function handleMapClick(type, query){
  * @param {boolean} keepRadius - 折疊時是否保留「搜尋半徑整組」
  */
 function toggleUIForMobile(showFull = true, keepRadius = false) {
+    const currentAddressEl = document.getElementById("currentAddress");
     const radiusGroup = [
         radiusInput,
         radiusLabel,
         document.querySelector('label[for="radiusInput"]'),
-        document.querySelector('.controls .small')
+        searchInfoEl
     ];
     const normalControls = [
         countrySelect,
@@ -2190,6 +2390,9 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
     normalControls.forEach(el => {
         if (el) el.style.display = showFull ? "" : "none";
     });
+
+    setTypeSelectionLocked(!showFull && hasSearched);
+
     // 搜尋半徑（整組處理）
     radiusGroup.forEach(el => {
         if (!el) return;
@@ -2199,17 +2402,13 @@ function toggleUIForMobile(showFull = true, keepRadius = false) {
             el.style.display = keepRadius ? "" : "none";
         }
     });
+    if (currentAddressEl) currentAddressEl.style.display = userLocation ? "" : "none";
 
     // 按鈕區（重新抽選三家只允許在「已搜尋」狀態出現）
-    if (hasSearched) {
-        reshuffleBtn.style.display = "";
-        reshuffleBtn.disabled = false;
-    } else {
-        reshuffleBtn.style.display = "none";
-        reshuffleBtn.disabled = true;
-    }
+    setReshuffleVisible(hasSearched);
 
-    if (resetBtn) resetBtn.style.display = showFull ? "none" : "";
+    if (resetBtn) resetBtn.style.display = (!showFull && hasSearched) ? "" : "none";
+    updateLocationHomeButton();
 }
 
 window.addEventListener('resize', () => {
@@ -2278,7 +2477,7 @@ function renderRestaurants(restaurants) {
         // 店家資訊（穩定可重查）
         const cuisineRaw = t.cuisine || t["cuisine:ja"] || t["cuisine:zh"] || "";
         const primaryCategory = r._primaryCategory || inferPrimaryCategory(t);
-        const categoryLabel = CATEGORY_LABELS[primaryCategory] || "一般餐廳";
+        const categoryLabel = CATEGORY_LABELS[getSimplifiedCategoryKey(primaryCategory)] || "一般餐廳";
         const contactPhone = t["contact:phone"] || t.phone || t["contact:mobile"] || "查無資料";
         const website = t.website || t["contact:website"] || t.url || "";
 
@@ -2431,12 +2630,16 @@ async function doSearch() {
     const isUsingUserLocation = hasUsedLocate === true && userLocation !== null;
     showLoading();
     setBusy(true);
+    hasSearched = false;
+    setReshuffleVisible(false);
+    setTypeSelectionLocked(false);
     try {
         const city = citySelect.value;
         const district = districtSelect.value;
         const street = streetInput.value.trim();
         const type = typeSelect.value;
         const radius = parseInt(radiusInput.value) || 1000;
+        lastSearchTypeLabel = getSelectedTypeLabel();
         let center = null;
 
         // 先更新搜尋訊息
@@ -2446,7 +2649,7 @@ async function doSearch() {
         if (isUsingUserLocation) {
             center = { lat: userLocation.lat, lon: userLocation.lon };
         } else {
-            const queryArr = [city, district, street].filter(s => s).join(" ");
+            const queryArr = buildLocationQuery(city, district, street);
             try {
                 center = await geocode(queryArr);
                 if (!center) throw new Error("找不到該地址位置");
@@ -2478,7 +2681,11 @@ async function doSearch() {
         const queryText = [city, district, street].filter(s => s).join(" ");
         lastRestaurants = [];
         try {
-            const results = await findRestaurants(center.lat, center.lon, radius, type, street);
+            const results = await withTimeout(
+                findRestaurants(center.lat, center.lon, radius, type, street),
+                SEARCH_TIMEOUT_MS,
+                "餐廳搜尋逾時"
+            );
             lastRestaurants = prepareRestaurantsFast(results);
         } catch (e) {
             console.warn("搜尋餐廳資料處理失敗，但不影響已取得資料:", e);
@@ -2487,21 +2694,23 @@ async function doSearch() {
         // ----- 隨機抽三筆顯示（僅對當次顯示的三家做深度地址補強） -----
         await pickAndRenderRandomRestaurants(lastRestaurants, queryText);
 
+        const hasResults = lastRestaurants.length > 0;
+
         // ⭐ 標記：已完成一次有效搜尋
-        hasSearched = true;
+        hasSearched = hasResults;
 
         // ⭐ 顯示並啟用「重新抽選三家」
-        reshuffleBtn.style.display = "";
-        reshuffleBtn.disabled = false;
+        setReshuffleVisible(hasResults);
+        setTypeSelectionLocked(hasResults);
 
         // ----- 手機 UI 折疊 -----
-        if (isMobile()) toggleUIForMobile(false, false);
+        if (isMobile() && hasResults) toggleUIForMobile(false, false);
 
         // ----- 顯示重新搜尋條件按鈕 -----
-        if (resetBtn) resetBtn.style.display = "";
+        if (resetBtn) resetBtn.style.display = hasResults ? "" : "none";
 
         // ----- 若結果為空，才 alert -----
-        if (!lastRestaurants || lastRestaurants.length === 0) {
+        if (!hasResults) {
             alert("找不到符合的店家，請稍後再試");
         }
     } catch (e) {
@@ -2514,7 +2723,7 @@ async function doSearch() {
         setBusy(false);
     }
     // ----- 手機版搜尋後隱藏按鈕 -----
-    if (isMobile()) {
+    if (isMobile() && hasSearched) {
         if (locateBtn) locateBtn.style.display = "none";
         if (searchBtn) searchBtn.style.display = "none";
     }
@@ -2607,6 +2816,11 @@ document.addEventListener("click",(e)=>{ if(!streetInput.contains(e.target)) str
 // ----- Initial Radius -----
 radiusLabel.textContent=radiusInput.value+"公尺";
 window.addEventListener("beforeunload", () => {
+  stopLocationTracking();
+  userLocation = null;
+});
+window.addEventListener("pagehide", () => {
+  stopLocationTracking();
   userLocation = null;
 });
 
@@ -2664,8 +2878,9 @@ if (isMobile()) toggleUIForMobile(true, false);
 
 // ⭐ APP 啟動初始化：尚未搜尋，強制隱藏重新抽選
 hasSearched = false;
-reshuffleBtn.style.display = "none";
-reshuffleBtn.disabled = true;
+setReshuffleVisible(false);
+updateLocationHomeButton();
+setTypeSelectionLocked(false);
 
 const helpBtn = document.getElementById('helpBtn'); // 你的說明按鈕
 const helpModal = document.getElementById('helpModal');

@@ -46,6 +46,7 @@
         <div class="col">
           <label for="typeSelect">店家類型</label>
           <select id="typeSelect" aria-label="店家類型"></select>
+          <div id="typeDisplay" class="type-display" style="display:none;"></div>
         </div>
       </div> <!-- end top-row -->
 
@@ -64,12 +65,16 @@
               <span class="emoji">🔍</span> 搜尋餐廳
             </button>
 
-            <button id="reshuffleBtn" class="btn-secondary" disabled>
-              <span class="emoji">🎲</span> 重新抽選三家
+            <button id="resetSearchBtn" class="btn-secondary" style="display:none;">
+              <span class="emoji">🔁</span> 重新搜尋條件
             </button>
 
             <button id="locateBtn" class="btn-utility">
               <span class="emoji">📍</span> 取得我的位置
+            </button>
+
+            <button id="clearLocationBtn" class="btn-utility" style="display:none;">
+              <span class="emoji">🏠</span> 取消定位回首頁
             </button>
 
             <button id="themeToggle" class="btn-toggle">
@@ -85,9 +90,9 @@
       </div> <!-- end row -->
     </section>
 
-    <!-- 手機版：重新搜尋條件 -->
-    <button id="resetSearchBtn" class="reset-search-btn">
-      🔁 重新搜尋條件
+    <!-- 手機版：重新抽選三家 -->
+    <button id="reshuffleBtn" class="reset-search-btn" disabled>
+      🎲 重新抽選三家
     </button>
 
     <main class="main-grid">
